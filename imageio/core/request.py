@@ -6,6 +6,7 @@ Definition of the Request object, which acts as a kind of bridge between
 what the user wants and what the plugins can.
 """
 
+import errno
 import os
 from io import BytesIO
 import zipfile
@@ -18,6 +19,7 @@ from ..core import urlopen, get_remote_file
 
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import Optional
 
 # URI types
 URI_BYTES = 1
@@ -51,12 +53,12 @@ class ImageMode(str, enum.Enum):
     ``Request.ImageMode`` and ``Request.IOMode``. The image mode that tells the
     plugin the desired (and expected) image shape. Available values are
 
-    - single_image ("i"): Return a single image extending in two spacial
+    - single_image ("i"): Return a single image extending in two spatial
       dimensions
-    - multi_image ("I"): Return a list of images extending in two spacial
+    - multi_image ("I"): Return a list of images extending in two spatial
       dimensions
     - single_volume ("v"): Return an image extending into multiple dimensions.
-      E.g. three spacial dimensions for image stacks, or two spatial and one
+      E.g. three spatial dimensions for image stacks, or two spatial and one
       time dimension for videos
     - multi_volume ("V"): Return a list of images extending into multiple
       dimensions.
@@ -161,7 +163,7 @@ RETURN_BYTES = "<bytes>"
 EXAMPLE_IMAGES = {
     "astronaut.png": "Image of the astronaut Eileen Collins",
     "camera.png": "A grayscale image of a photographer",
-    "checkerboard.png": "Black and white image of a chekerboard",
+    "checkerboard.png": "Black and white image of a checkerboard",
     "wood.jpg": "A (repeatable) texture of wooden planks",
     "bricks.jpg": "A (repeatable) texture of stone bricks",
     "clock.png": "Photo of a clock with motion blur (Stefan van der Walt)",
@@ -175,17 +177,20 @@ EXAMPLE_IMAGES = {
     "moon.png": "Image showing a portion of the surface of the moon",
     "page.png": "A scanned page of text",
     "text.png": "A photograph of handdrawn text",
+    "bacterial_colony.tif": "Multi-page TIFF image of a bacterial colony",
+    "calcium_imaging.tif": "Neuronal calcium imaging video",
     "chelsea.zip": "The chelsea.png in a zipfile (for testing)",
     "chelsea.bsdf": "The chelsea.png in a BSDF file(for testing)",
     "newtonscradle.gif": "Animated GIF of a newton's cradle",
     "cockatoo.mp4": "Video file of a cockatoo",
+    "cockatoo_yuv420.mp4": "Video file of a cockatoo with yuv420 pixel format",
     "stent.npz": "Volumetric image showing a stented abdominal aorta",
     "meadow_cube.jpg": "A cubemap image of a meadow, e.g. to render a skybox.",
 }
 
 
 class Request(object):
-    """Request(uri, mode, **kwargs)
+    """ImageResource handling utility.
 
     Represents a request for reading or saving an image resource. This
     object wraps information to that request and acts as an interface
@@ -200,7 +205,7 @@ class Request(object):
     information between different formats and between a format and
     associated reader/writer.
 
-    parameters
+    Parameters
     ----------
     uri : {str, bytes, file}
         The resource to load the image from.
@@ -209,15 +214,16 @@ class Request(object):
         request. The second character is used to indicate the kind of data:
         "i" for an image, "I" for multiple images, "v" for a volume,
         "V" for multiple volumes, "?" for don't care.
+
     """
 
-    def __init__(self, uri, mode, **kwargs):
-
+    def __init__(self, uri, mode, *, extension=None, format_hint: str = None, **kwargs):
         # General
         self.raw_uri = uri
         self._uri_type = None
         self._filename = None
         self._extension = None
+        self._format_hint = None
         self._kwargs = kwargs
         self._result = None  # Some write actions may have a result
 
@@ -245,13 +251,35 @@ class Request(object):
         self._parse_uri(uri)
 
         # Set extension
-        if self._filename is not None:
+        if extension is not None:
+            if extension[0] != ".":
+                raise ValueError(
+                    "`extension` should be a file extension starting with a `.`,"
+                    f" but is `{extension}`."
+                )
+            self._extension = extension
+        elif self._filename is not None:
             if self._uri_type in (URI_FILENAME, URI_ZIPPED):
                 path = self._filename
             else:
                 path = urlparse(self._filename).path
             ext = Path(path).suffix.lower()
             self._extension = ext if ext != "" else None
+
+        if format_hint is not None:
+            warnings.warn(
+                "The usage of `format_hint` is deprecated and will be removed "
+                "in ImageIO v3. Use `extension` instead.",
+                DeprecationWarning,
+            )
+
+        if format_hint is not None and format_hint[0] != ".":
+            raise ValueError(
+                "`format_hint` should be a file extension starting with a `.`,"
+                f" but is `{format_hint}`."
+            )
+
+        self.format_hint = format_hint
 
     def _parse_uri(self, uri):
         """Try to figure our what we were given"""
@@ -321,7 +349,7 @@ class Request(object):
 
         # Check if a zipfile
         if self._uri_type == URI_FILENAME:
-            # Search for zip extension followed by a path separater
+            # Search for zip extension followed by a path separator
             for needle in [".zip/", ".zip\\"]:
                 zip_i = self._filename.lower().find(needle)
                 if zip_i > 0:
@@ -380,16 +408,23 @@ class Request(object):
             if is_read_request:
                 # Reading: check that the file exists (but is allowed a dir)
                 if not os.path.exists(fn):
-                    raise FileNotFoundError("No such file: '%s'" % fn)
+                    raise FileNotFoundError(
+                        errno.ENOENT, "No such file or directory", fn
+                    )
             else:
                 # Writing: check that the directory to write to does exist
                 dn = os.path.dirname(fn)
                 if not os.path.exists(dn):
-                    raise FileNotFoundError("The directory %r does not exist" % dn)
+                    raise FileNotFoundError(
+                        errno.ENOENT, "The directory does not exist", dn
+                    )
 
     @property
     def filename(self):
-        """The uri for which reading/saving was requested. This
+        """Name of the ImageResource.
+
+
+        The uri for which reading/saving was requested. This
         can be a filename, an http address, or other resource
         identifier. Do not rely on the filename to obtain the data,
         but use ``get_file()`` or ``get_local_filename()`` instead.
@@ -397,12 +432,22 @@ class Request(object):
         return self._filename
 
     @property
-    def extension(self):
+    def extension(self) -> str:
         """The (lowercase) extension of the requested filename.
         Suffixes in url's are stripped. Can be None if the request is
         not based on a filename.
         """
         return self._extension
+
+    @property
+    def format_hint(self) -> Optional[str]:
+        return self._format_hint
+
+    @format_hint.setter
+    def format_hint(self, format: str) -> None:
+        self._format_hint = format
+        if self._extension is None:
+            self._extension = format
 
     @property
     def mode(self):
@@ -488,11 +533,12 @@ class Request(object):
             return self._filename
         else:
             # Get filename
-            if self._uri_type in (URI_HTTP, URI_FTP):
-                ext = os.path.splitext(self._filename.split("?")[0])[1]
+            if self.extension is not None:
+                ext = self.extension
             else:
                 ext = os.path.splitext(self._filename)[1]
-            self._filename_local = tempfile.mktemp(ext, "imageio_")
+            fd, self._filename_local = tempfile.mkstemp(ext, "imageio_")
+            os.close(fd)
             # Write stuff to it?
             if self.mode.io_mode == IOMode.read:
                 with open(self._filename_local, "wb") as file:
@@ -507,7 +553,6 @@ class Request(object):
         """
 
         if self.mode.io_mode == IOMode.write:
-
             # See if we "own" the data and must put it somewhere
             bytes = None
             if self._filename_local:
@@ -618,6 +663,9 @@ class SeekableFileObject:
     """A readonly wrapper file object that add support for seeking, even if
     the wrapped file object does not. The allows us to stream from http and
     still use Pillow.
+
+    readline matches BytesIO: it returns bytes up to the next newline, EOF, or
+    size, using the same buffer as read/seek.
     """
 
     def __init__(self, f):
@@ -628,7 +676,6 @@ class SeekableFileObject:
         self.closed = False
 
     def read(self, n=None):
-
         # Fix up n
         if n is None:
             pass
@@ -660,6 +707,36 @@ class SeekableFileObject:
         self._i += len(res)
 
         return res
+
+    def readline(self, size=-1):
+        if size is None:
+            size = -1
+        else:
+            size = int(size)
+            if size == 0:
+                return b""
+
+        if not self._have_all:
+            nl = self._buffer.find(b"\n", self._i)
+            unread = len(self._buffer) - self._i
+            if nl == -1 and (size < 0 or unread < size):
+                if size < 0:
+                    more = self.f.read()
+                    self._have_all = True
+                else:
+                    more = self.f.read(size - unread)
+                    if len(more) < size - unread:
+                        self._have_all = True
+                self._buffer += more
+
+        nl = self._buffer.find(b"\n", self._i)
+        if nl == -1:
+            n = len(self._buffer) - self._i
+        else:
+            n = nl + 1 - self._i
+        if size >= 0:
+            n = min(n, size)
+        return self.read(n)
 
     def tell(self):
         return self._i

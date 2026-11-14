@@ -11,16 +11,18 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import sys
+import importlib
+import inspect
 import os
+import sys
+from pathlib import Path
+
 import imageio
 
 # import/load the plugins so that they can be documented
-# this may require mocking imports in the future
 import imageio.plugins.bsdf
 import imageio.plugins.dicom
 import imageio.plugins.feisem
-import imageio.plugins.ffmpeg
 import imageio.plugins.fits
 import imageio.plugins.freeimage
 import imageio.plugins.gdal
@@ -30,7 +32,6 @@ import imageio.plugins.pillow_legacy
 import imageio.plugins.simpleitk
 import imageio.plugins.spe
 import imageio.plugins.swf
-
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -49,6 +50,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "numpydoc",
     "imageio_ext",
+    "sphinx.ext.linkcode",
 ]
 
 # Monkey-patch numpydoc to don't do the autosummary thing
@@ -59,6 +61,7 @@ SphinxDocString._str_member_list = lambda self, name: []
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
+autodoc_mock_imports = ["av", "cv2", "imageio_ffmpeg", "pydicom", "rawpy", "tifffile"]
 
 # The suffix of source filenames.
 source_suffix = ".rst"
@@ -70,8 +73,8 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = u"imageio"
-copyright = u"2014-2021, imageio contributors"
+project = "imageio"
+copyright = "2014-2026, imageio contributors"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -117,6 +120,54 @@ pygments_style = "sphinx"
 # modindex_common_prefix = []
 
 
+# Function to generate source links pointing to GitHub
+def linkcode_resolve(domain, info):
+    if domain != "py":
+        return None
+
+    obj = importlib.import_module(info["module"])
+    source_file = Path(inspect.getsourcefile(obj))
+    file_path = "/" + "/".join(info["module"].split("."))
+
+    # try to get a better file path
+    add_linenumbers = False
+    for part in info["fullname"].split("."):
+        try:
+            obj = getattr(obj, part)
+        except AttributeError:
+            break
+
+        try:
+            source_file = Path(inspect.getsourcefile(obj))
+        except TypeError:
+            break
+
+        path_elements = [source_file.name]
+        for parent in source_file.parents:
+            path_elements = [parent.name] + path_elements
+            if parent.name == "imageio":
+                break
+
+        file_path = "/".join(path_elements)
+    else:
+        add_linenumbers = True
+
+    source_url = (
+        f"https://github.com/imageio/imageio/blob/v{imageio.__version__}/{file_path}"
+    )
+
+    if add_linenumbers:
+        try:
+            source_lines, start = inspect.getsourcelines(obj)
+        except OSError:
+            pass
+        else:
+            end = start + len(source_lines) - 1
+            source_url += f"#L{start}-L{end}"
+
+    return source_url
+
+
 # -- Options for HTML output ---------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -132,12 +183,15 @@ html_theme_options = {
             "icon": "fab fa-github-square",
         },
         {
-            "name": "Pipy",
+            "name": "PyPI",
             "url": "https://pypi.org/project/imageio/",
             "icon": "fas fa-box",
         },
     ],
     "use_edit_page_button": True,
+    "analytics": {
+        "google_analytics_id": "G-EFE74Z5D7E",
+    },
 }
 html_context = {
     # "github_url": "https://github.com", # or your GitHub Enterprise interprise
@@ -233,8 +287,8 @@ latex_documents = [
     (
         "index",
         "imageio.tex",
-        u"imageio Documentation",
-        u"imageio contributors",
+        "imageio Documentation",
+        "imageio contributors",
         "manual",
     )
 ]
@@ -264,9 +318,7 @@ latex_documents = [
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [
-    ("index", "imageio", u"imageio Documentation", [u"imageio contributors"], 1)
-]
+man_pages = [("index", "imageio", "imageio Documentation", ["imageio contributors"], 1)]
 
 # If true, show URL addresses after external links.
 # man_show_urls = False
@@ -281,8 +333,8 @@ texinfo_documents = [
     (
         "index",
         "imageio",
-        u"imageio Documentation",
-        u"imageio contributors",
+        "imageio Documentation",
+        "imageio contributors",
         "imageio",
         "One line description of project.",
         "Miscellaneous",

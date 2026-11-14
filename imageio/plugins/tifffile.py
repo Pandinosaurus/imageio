@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # imageio is distributed under the terms of the (new) BSD License.
 
-""" Read/Write TIFF files.
+"""Read/Write TIFF files.
 
 Backend: internal
 
@@ -42,8 +42,19 @@ planar_configuration : {'contig', 'planar'}
     By default this setting is inferred from the data shape.
     'contig': last dimension contains samples.
     'planar': third last dimension contains samples.
-resolution_unit : (float, float) or ((int, int), (int, int))
-    X and Y resolution in dots per inch as float or rational numbers.
+resolution_unit : int
+    The resolution unit stored in the TIFF tag. Usually 1 means no/unknown unit,
+    2 means dpi (inch), 3 means dpc (centimeter).
+resolution : (float, float, str)
+    A tuple formatted as (X_resolution, Y_resolution, unit). The unit is a
+    string representing one of the following units::
+
+        NONE        # No unit or unit unknown
+        INCH        # dpi
+        CENTIMETER  # cpi
+        MILLIMETER
+        MICROMETER
+
 compression : int
     Value indicating the compression algorithm used, e.g. 5 is LZW,
     7 is JPEG, 8 is deflate.
@@ -76,8 +87,6 @@ is_ome : bool
     True if page contains OME-XML in image_description tag.
 is_sgi : bool
     True if page contains SGI image and tile depth tags.
-is_stk : bool
-    True if page contains UIC2Tag tag.
 is_mdgel : bool
     True if page contains md_file_tag tag.
 is_mediacy : bool
@@ -114,6 +123,17 @@ description : str
 compress : int
     Values from 0 to 9 controlling the level of zlib (deflate) compression.
     If 0, data are written uncompressed (default).
+compression : str, (int, int)
+    Compression scheme used while writing the image. If omitted (default) the
+    image is not uncompressed. Compression cannot be used to write contiguous
+    series. Compressors may require certain data shapes, types or value ranges.
+    For example, JPEG compression requires grayscale or RGB(A), uint8 or 12-bit
+    uint16. JPEG compression is experimental. JPEG markers and TIFF tags may not
+    match. Only a limited set of compression schemes are implemented. 'ZLIB' is
+    short for ADOBE_DEFLATE. The value is written to the Compression tag.
+compressionargs:
+    Extra arguments passed to compression codec, e.g., compression level. Refer
+    to the Imagecodecs implementation for supported arguments.
 predictor : bool
     If True, horizontal differencing is applied before compression.
     Note that using an int literal 1 actually means no prediction scheme
@@ -157,13 +177,20 @@ provide access to new performance improvements and bug fixes.
 import datetime
 
 from ..core import Format
+from ..core.request import URI_BYTES, URI_FILE
 
 import numpy as np
-
+import warnings
 
 try:
     import tifffile as _tifffile
 except ImportError:
+    warnings.warn(
+        "ImageIO's vendored tifffile backend is deprecated and will be"
+        " removed in ImageIO v3. Install the tifffile directly:"
+        " `pip install imageio[tifffile]`",
+        DeprecationWarning,
+    )
     from . import _tifffile
 
 
@@ -174,6 +201,8 @@ WRITE_METADATA_KEYS = (
     "resolution",
     "description",
     "compress",
+    "compression",
+    "compressionargs",
     "predictor",
     "volume",
     "writeshape",
@@ -187,14 +216,16 @@ READ_METADATA_KEYS = (
     "is_contig",
     "is_micromanager",
     "is_ome",
-    "is_lsm" "is_palette",
+    "is_lsm",
+    "is_palette",
     "is_reduced",
     "is_rgb",
     "is_sgi",
     "is_shaped",
     "is_stk",
     "is_tiled",
-    "is_mdgel" "resolution_unit",
+    "is_mdgel",
+    "resolution_unit",
     "compression",
     "predictor",
     "is_mediacy",
@@ -372,7 +403,9 @@ class TiffFormat(Format):
         return True
 
     def _can_write(self, request):
-        if request.extension not in self.extensions:
+        if request._uri_type in [URI_FILE, URI_BYTES]:
+            pass  # special URI
+        elif request.extension not in self.extensions:
             return False
 
         try:
@@ -405,25 +438,15 @@ class TiffFormat(Format):
                 self._f.close()
 
         def _get_length(self):
-            if self.request.mode[1] in "vV":
-                return len(self._tf.series)
-            else:
-                # for backwards compatibility
-                # imread/mimread reads all pages individually
-                return len(self._tf.pages)
+            return len(self._tf.series)
 
         def _get_data(self, index):
-            if self.request.mode[1] in "vV":
-                # this might regress #559 / #558
-                # but it is hard to test without a test image
-                im = self._tf.asarray(series=index)
-            else:
-                # Read as 2D image
-                if index < 0 or index >= self._get_length():
-                    raise IndexError("Index out of range while reading from tiff file")
-                im = self._tf.pages[index].asarray()
-            # Return array and empty meta data
+            if index < 0 or index >= self._get_length():
+                raise IndexError("Index out of range while reading from tiff file")
+
+            im = self._tf.asarray(series=index)
             meta = self._get_meta_data(index)
+
             return im, meta
 
         def _get_meta_data(self, index):
@@ -445,6 +468,25 @@ class TiffFormat(Format):
                 except Exception:
                     pass
 
+            if 296 in page.tags:
+                meta["resolution_unit"] = page.tags[296].value.value
+
+            if 282 in page.tags and 283 in page.tags and 296 in page.tags:
+                resolution_x = page.tags[282].value
+                resolution_y = page.tags[283].value
+                if resolution_x[1] == 0 or resolution_y[1] == 0:
+                    warnings.warn(
+                        "Ignoring resolution metadata, "
+                        "because at least one direction has a 0 denominator.",
+                        RuntimeWarning,
+                    )
+                else:
+                    meta["resolution"] = (
+                        resolution_x[0] / resolution_x[1],
+                        resolution_y[0] / resolution_y[1],
+                        page.tags[296].value.name,
+                    )
+
             return meta
 
     # -- writer
@@ -452,14 +494,17 @@ class TiffFormat(Format):
         def _open(self, bigtiff=None, byteorder=None, software=None):
             try:
                 self._tf = _tifffile.TiffWriter(
-                    self.request.get_file(), bigtiff, byteorder, software=software
+                    self.request.get_file(),
+                    bigtiff=bigtiff,
+                    byteorder=byteorder,
+                    software=software,
                 )
                 self._software = None
             except TypeError:
                 # In tifffile >= 0.15, the `software` arg is passed to
                 # TiffWriter.save
                 self._tf = _tifffile.TiffWriter(
-                    self.request.get_file(), bigtiff, byteorder
+                    self.request.get_file(), bigtiff=bigtiff, byteorder=byteorder
                 )
                 self._software = software
 
@@ -490,12 +535,23 @@ class TiffFormat(Format):
         @staticmethod
         def _sanitize_meta(meta):
             ret = {}
-            for (key, value) in meta.items():
+            for key, value in meta.items():
                 if key in WRITE_METADATA_KEYS:
                     # Special case of previously read `predictor` int value
                     # 1(=NONE) translation to False expected by TiffWriter.save
                     if key == "predictor" and not isinstance(value, bool):
                         ret[key] = value > 1
+                    elif key == "compress" and value != 0:
+                        warnings.warn(
+                            "The use of `compress` is deprecated. Use `compression` and `compressionargs` instead.",
+                            DeprecationWarning,
+                        )
+
+                        if _tifffile.__version__ < "2022":
+                            ret["compression"] = (8, value)
+                        else:
+                            ret["compression"] = "zlib"
+                            ret["compressionargs"] = {"level": value}
                     else:
                         ret[key] = value
             return ret

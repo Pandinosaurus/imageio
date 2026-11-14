@@ -66,7 +66,7 @@ Web Servers (http/https)
 ------------------------
 
 .. note::
-    This is primarily intended for publically available ImageResources. If your
+    This is primarily intended for publicly available ImageResources. If your
     server requires authentication, you will have to download the ImageResource
     yourself before handing it over to ImageIO.
 
@@ -77,6 +77,10 @@ the image to a compatible backend to do the reading itself. It works with any
 backend. If the backend supports file objects directly, this processes will
 happen purely in memory.
 
+HTTP responses are not seekable. ImageIO wraps them so backends that ``seek``
+or call ``readline`` (Pillow's XPM and IM plugins among them) can still read
+the stream.
+
 You can read from public web servers using a URL string ::
 
     img = iio.imread("https://my-domain.com/path/to/some/image.gif")
@@ -86,7 +90,7 @@ File Servers (ftp/ftps)
 -----------------------
 
 .. note::
-    This is primarily intended for publically available ImageResources. If your
+    This is primarily intended for publicly available ImageResources. If your
     server requires authentication, you will have to download the ImageResource
     yourself before handing it over to ImageIO.
 
@@ -103,7 +107,7 @@ Webcam
 .. note::
     To access your webcam you will need to have the ffmpeg backend installed::
 
-        pip install imageio[ffmpeg]
+        pip install "imageio[ffmpeg]"
 
 With ImageIO you can directly read images (frame-by-frame) from a webcam that is
 connected to the computer. To do this, you can use the special target::

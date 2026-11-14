@@ -7,111 +7,121 @@
 
 [![Supported Python Versions](https://img.shields.io/pypi/pyversions/imageio.svg)](https://pypi.python.org/pypi/imageio/)
 [![PyPI Version](https://img.shields.io/pypi/v/imageio.svg)](https://pypi.python.org/pypi/imageio/)
-[![PyPi Download stats](http://pepy.tech/badge/imageio)](http://pepy.tech/project/imageio)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4972048.svg)](https://doi.org/10.5281/zenodo.4972048)
+![PyPI Downloads](https://img.shields.io/pypi/dm/imageio?color=blue)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1488561.svg)](https://doi.org/10.5281/zenodo.1488561)
 
+Website: <https://imageio.readthedocs.io/>
 
+Imageio is a mature Python library that makes it easy to read and write image
+and video data. This includes animated images, video, volumetric data, and
+scientific formats. It is cross-platform, runs on Python 3.11 through 3.14, and is easy to
+install.
 
-Website: https://imageio.readthedocs.io/
+Professional support is available via
+[Tidelift](https://tidelift.com/funding/github/pypi/imageio).
 
-<p class='summary'>
-Imageio is a Python library that provides an easy interface to read and
-write a wide range of image data, including animated images, video,
-volumetric data, and scientific formats. It is cross-platform, runs on
-Python 3.6+, and is easy to install.
-</p>
+## Example
 
-<p>
-    Professional support is available via <a href='https://tidelift.com/funding/github/pypi/imageio'>Tidelift</a> and <a href='https://xscode.com/almarklein/imageio'>xs:code</a>.
-</p>
-
-<h2>Example</h2>
-Here's a minimal example of how to use imageio. See the docs for
-<a href='https://imageio.readthedocs.io/en/stable/examples.html'>more examples</a>.
+Here's a minimal example of how to use imageio. See the docs for [more
+examples](https://imageio.readthedocs.io/en/stable/examples.html).
 
 ```python
-import imageio
-im = imageio.imread('imageio:chelsea.png')  # read a standard image
-im.shape  # im is a NumPy array
->> (300, 451, 3)
-imageio.imwrite('~/chelsea-gray.jpg', im[:, :, 0])
+import imageio.v3 as iio
+im = iio.imread('imageio:chelsea.png')  # read a standard image
+im.shape  # im is a NumPy array of shape (300, 451, 3)
+iio.imwrite('chelsea.jpg', im)  # convert to jpg
 ```
 
-<h2>API in a nutshell</h2>
-As a user, you just have to remember a handful of functions:
+## API in a nutshell
 
-<ul>
-    <li>imread() and imwrite() - for single images</li>
-    <li>mimread() and mimwrite() - for image series (animations)</li>
-    <li>volread() and volwrite() - for volumetric image data</li>
-    <li>get_reader() and get_writer() - for more control (e.g. streaming or compression)</li>
-    <li>See the <a href='https://imageio.readthedocs.io/en/stable/reference/index.html'>API docs</a> for more information</li>
-</ul>
+You just have to remember a handful of functions:
 
+```python
+imread()  # for reading
+imwrite() # for writing
+imiter()  # for iterating image series (animations/videos/OME-TIFF/...)
+improps() # for standardized metadata
+immeta()  # for format-specific metadata
+imopen()  # for advanced usage
+```
 
-<h2>Features</h2>
-<ul>
-    <li>Simple interface via a concise set of functions</li>
-    <li>Easy to <a href='https://imageio.readthedocs.io/en/stable/getting_started/installation.html'>install</a> using Conda or pip</li>
-    <li>Few dependencies (only NumPy and Pillow)</li>
-    <li>Pure Python, runs on Python 3.6+, and PyPy</li>
-    <li>Cross platform, runs on Windows, Linux, macOS</li>
-    <li>Lots of supported <a href='https://imageio.readthedocs.io/en/stable/formats/index.html'>formats</a></li>
-    <li>Read/Write support for various [resources](https://imageio.readthedocs.io/en/stable/getting_started/requests.html) (files, URLs, bytes(), file objects, ...)</li>
-    <li>Code quality is maintained via continuous integration and continous deployment</li>
-</ul>
+See the [API docs](https://imageio.readthedocs.io/en/stable/reference/index.html) for more information.
 
+## Features
 
-<h2>Dependencies</h2>
+- Simple interface via a concise set of functions
+- Easy to
+  [install](https://imageio.readthedocs.io/en/stable/getting_started/installation.html)
+  using Conda or pip
+- Few core dependencies (only NumPy and Pillow)
+- Pure Python, runs on Python 3.11 through 3.14, and PyPy
+- Cross platform, runs on Windows, Linux, macOS
+- More than 295 supported
+  [formats](https://imageio.readthedocs.io/en/stable/formats/index.html)
+- Read/Write support for various
+  [resources](https://imageio.readthedocs.io/en/stable/getting_started/requests.html)
+  (files, URLs, bytes, FileLike objects, ...)
+- High code quality and large test suite including functional, regression, and
+  integration tests
+
+## Dependencies
 
 Minimal requirements:
-<ul>
-    <li>Python 3.6+</li>
-    <li>NumPy</li>
-    <li>Pillow</li>
-</ul>
+
+- Python 3.11 through 3.14
+- NumPy
+- Pillow >= 8.3.2
 
 Optional Python packages:
-<ul>
-    <li>imageio-ffmpeg (for working with video files)</li>
-    <li>itk or SimpleITK (for ITK plugin)</li>
-    <li>astropy (for FITS plugin)</li>
-    <li>osgeo (for GDAL plugin)</li>
-    <li><a href='https://codeberg.org/monilophyta/imageio-flif'>imageio-flif</a> (for working with <a href='https://github.com/FLIF-hub/FLIF'>FLIF</a> image files)</li>
-</ul>
 
-<h2>Citing imageio</h2>
-<p>
-If you use imageio for scientific work, we would appreciate a citation.
-We have a <a href='https://doi.org/10.5281/zenodo.1488561'>DOI</a>!
-</p>
+- imageio-ffmpeg (for working with video files)
+- pyav (for working with video files)
+- tifffile (for working with TIFF files)
+- itk or SimpleITK (for ITK plugin)
+- astropy (for FITS plugin)
+- [imageio-flif](https://codeberg.org/monilophyta/imageio-flif) (for working
+  with [FLIF](https://github.com/FLIF-hub/FLIF) image files)
 
+## Security contact information
 
-<h2>Security contact information</h2>
+To report a security vulnerability, please use the [Tidelift security
+contact](https://tidelift.com/security). Tidelift will coordinate the fix and
+disclosure.
 
-To report a security vulnerability, please use the
-<a href='https://tidelift.com/security'>Tidelift security contact</a>.
-Tidelift will coordinate the fix and disclosure.
-
-
-<h2>ImageIO for enterprise</h2>
+## ImageIO for enterprise
 
 Available as part of the Tidelift Subscription.
 
-The maintainers of imageio and thousands of other packages are working with Tidelift to deliver commercial support and maintenance for the open source dependencies you use to build your applications. Save time, reduce risk, and improve code health, while paying the maintainers of the exact dependencies you use.
-<a href='https://tidelift.com/subscription/pkg/pypi-imageio?utm_source=pypi-imageio&utm_medium=referral&utm_campaign=readme'>Learn more</a>.
+The maintainers of imageio and thousands of other packages are working with
+Tidelift to deliver commercial support and maintenance for the open source
+dependencies you use to build your applications. Save time, reduce risk, and
+improve code health, while paying the maintainers of the exact dependencies you
+use. ([Learn
+more](https://tidelift.com/subscription/pkg/pypi-imageio?utm_source=pypi-imageio&utm_medium=referral&utm_campaign=readme))
 
+## Details
 
-<h2>Details</h2>
-<p>
-    The core of ImageIO is a set of user-facing APIs combined with a plugin manager. API calls choose sensible defaults and then call the plugin manager, which deduces the correct plugin/backend to use for the given resource and file format. The plugin manager then adds sensible backend-specific defaults and then calles one of ImageIOs many backends to perform the actual loading. This allows ImageIO to take care of most of the gory details of loading images for you, while still allowing you to customize the behavior when and where you need to. You can find a more detailed explanation of this process in [our documentation](https://imageio.readthedocs.io/en/stable/getting_started/overview.html).
+The core of ImageIO is a set of user-facing APIs combined with a plugin manager.
+API calls choose sensible defaults and then call the plugin manager, which
+deduces the correct plugin/backend to use for the given resource and file
+format. The plugin manager adds sensible backend-specific defaults and then
+calls one of ImageIOs many backends to perform the actual loading. This allows
+ImageIO to take care of most of the gory details of loading images for you,
+while still allowing you to customize the behavior when and where you need to.
+You can find a more detailed explanation of this process in [our
+documentation](https://imageio.readthedocs.io/en/stable/user_guide/overview.html).
 
-<h2>Contributing</h2>
+## Contributing
 
-We welcome contributions of any kind. Here are some suggestions on how you are able to contribute
+We welcome contributions of any kind. Here are some suggestions on how you are
+able to contribute
 
 - add missing formats to the format list
 - suggest/implement support for new backends
 - report/fix any bugs you encounter while using ImageIO
 
-To assist you in getting started with contributing code, take a look at the [development section](https://imageio.readthedocs.io/en/stable/development/index.html) of the docs. You will find instructions on setting up the dev environment as well as examples on how to contribute code.
+To assist you in getting started with contributing code, take a look at the
+[development
+section](https://imageio.readthedocs.io/en/stable/development/index.html) of the
+docs. You will find instructions on setting up the dev environment as well as
+examples on how to contribute code.

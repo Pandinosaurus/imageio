@@ -1,4 +1,3 @@
-from typing import Any
 import importlib
 
 from ..core.legacy_plugin_wrapper import LegacyPlugin
@@ -53,15 +52,15 @@ class PluginConfig:
 
     def __init__(
         self,
-        name: str,
-        class_name: str,
-        module_name: str,
+        name,
+        class_name,
+        module_name,
         *,
-        is_legacy: bool = False,
-        package_name: str = None,
-        install_name: str = None,
-        legacy_args: dict = None,
-    ) -> None:
+        is_legacy=False,
+        package_name=None,
+        install_name=None,
+        legacy_args=None,
+    ):
         legacy_args = legacy_args or dict()
 
         self.name = name
@@ -75,7 +74,7 @@ class PluginConfig:
         self.legacy_args.update(legacy_args)
 
     @property
-    def format(self) -> Any:
+    def format(self):
         """For backwards compatibility with FormatManager
 
         Delete when migrating to v3
@@ -88,7 +87,7 @@ class PluginConfig:
         return clazz(**self.legacy_args)
 
     @property
-    def plugin_class(self) -> Any:
+    def plugin_class(self):
         """Get the plugin class (import if needed)
 
         Returns
@@ -115,6 +114,26 @@ class PluginConfig:
 known_plugins = dict()
 known_plugins["pillow"] = PluginConfig(
     name="pillow", class_name="PillowPlugin", module_name="imageio.plugins.pillow"
+)
+known_plugins["pyav"] = PluginConfig(
+    name="pyav", class_name="PyAVPlugin", module_name="imageio.plugins.pyav"
+)
+known_plugins["opencv"] = PluginConfig(
+    name="opencv", class_name="OpenCVPlugin", module_name="imageio.plugins.opencv"
+)
+known_plugins["tifffile"] = PluginConfig(
+    name="tifffile",
+    class_name="TifffilePlugin",
+    module_name="imageio.plugins.tifffile_v3",
+)
+known_plugins["SPE"] = PluginConfig(
+    name="spe", class_name="SpePlugin", module_name="imageio.plugins.spe"
+)
+known_plugins["rawpy"] = PluginConfig(
+    name="rawpy", class_name="RawPyPlugin", module_name="imageio.plugins.rawpy"
+)
+known_plugins["pydicom"] = PluginConfig(
+    name="pydicom", class_name="PydicomPlugin", module_name="imageio.plugins.pydicom"
 )
 
 # Legacy plugins
@@ -219,7 +238,7 @@ known_plugins["FFMPEG"] = PluginConfig(
     install_name="ffmpeg",
     legacy_args={
         "description": "Many video formats and cameras (via ffmpeg)",
-        "extensions": ".mov .avi .mpg .mpeg .mp4 .mkv .webm .wmv",
+        "extensions": ".mov .avi .mpg .mpeg .mp4 .mkv .webm .wmv .h264",
         "modes": "I",
     },
 )
@@ -343,19 +362,6 @@ known_plugins["NPZ"] = PluginConfig(
     legacy_args={
         "description": "Numpy's compressed array format",
         "extensions": ".npz",
-        "modes": "iIvV",
-    },
-)
-
-known_plugins["SPE"] = PluginConfig(
-    name="SPE",
-    class_name="SpeFormat",
-    module_name="imageio.plugins.spe",
-    is_legacy=True,
-    install_name="spe",
-    legacy_args={
-        "description": "SPE file format",
-        "extensions": ".spe",
         "modes": "iIvV",
     },
 )

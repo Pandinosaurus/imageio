@@ -3,6 +3,13 @@
 
 """Read/Write video using FFMPEG
 
+.. note::
+    We are in the process of (slowly) replacing this plugin with a new one that
+    is based on `pyav <https://pyav.org/docs/stable/>`_. It is faster and more
+    flexible than the plugin documented here. Check the :mod:`pyav
+    plugin's documentation <imageio.plugins.pyav>` for more information about
+    this plugin.
+
 Backend Library: https://github.com/imageio/imageio-ffmpeg
 
 .. note::
@@ -19,10 +26,11 @@ webcams and USB cameras. It is based on ffmpeg and is inspired by/based `moviepy
 Parameters for reading
 ----------------------
 fps : scalar
-    The number of frames per second to read the data at. Default None (i.e.
-    read at the file's own fps). One can use this for files with a
+    The number of frames per second of the input stream. Default None (i.e.
+    read at the file's native fps). One can use this for files with a
     variable fps, or in cases where imageio is unable to correctly detect
-    the fps.
+    the fps. In case of trouble opening camera streams, it may help to set an
+    explicit fps value matching a framerate supported by the camera.
 loop : bool
     If True, the video will rewind as soon as a frame is requested
     beyond the last frame. Otherwise, IndexError is raised. Default False.
@@ -71,7 +79,7 @@ bitrate : int | None
     Set a constant bitrate for the video encoding. Default is None causing
     'quality' parameter to be used instead.  Better quality videos with
     smaller file sizes will result from using the 'quality'  variable
-    bitrate parameter rather than specifiying a fixed bitrate with this
+    bitrate parameter rather than specifying a fixed bitrate with this
     parameter.
 pixelformat: str
     The output video pixel format. Default is 'yuv420p' which most widely
@@ -98,7 +106,14 @@ macro_block_size: int
     automatic feature set it to None or 1, however be warned many players
     can't decode videos that are odd in size and some codecs will produce
     poor results or fail. See https://en.wikipedia.org/wiki/Macroblock.
-
+audio_path : str | None
+    Audio path of any audio that needs to be written. Defaults to nothing,
+    so no audio will be written. Please note, when writing shorter video
+    than the original, ffmpeg will not truncate the audio track; it
+    will maintain its original length and be longer than the video.
+audio_codec : str | None
+    The audio codec to use. Defaults to nothing, but if an audio_path has
+    been provided ffmpeg will attempt to set a default codec.
 
 Notes
 -----
@@ -122,8 +137,10 @@ import re
 import sys
 import time
 import logging
+import platform
 import threading
 import subprocess as sp
+import imageio_ffmpeg
 
 import numpy as np
 
@@ -152,26 +169,13 @@ def download(directory=None, force_download=False):  # pragma: no cover
 # For backwards compatibility - we dont use this ourselves
 def get_exe():  # pragma: no cover
     """Wrapper for imageio_ffmpeg.get_ffmpeg_exe()"""
-    import imageio_ffmpeg
 
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
-_ffmpeg_api = None
-
-
-def _get_ffmpeg_api():
-    global _ffmpeg_api
-    if _ffmpeg_api is None:
-        try:
-            import imageio_ffmpeg
-        except ImportError:
-            raise ImportError(
-                "To use the imageio ffmpeg plugin you need to "
-                "'pip install imageio-ffmpeg'"
-            )
-        _ffmpeg_api = imageio_ffmpeg
-    return _ffmpeg_api
+def get_version():
+    """Return the version of imageio-ffmpeg in tuple."""
+    return tuple(map(int, imageio_ffmpeg.__version__.split(".")))
 
 
 class FfmpegFormat(Format):
@@ -181,9 +185,6 @@ class FfmpegFormat(Format):
     """
 
     def _can_read(self, request):
-        if request.mode[1] not in "I?":
-            return False
-
         # Read from video stream?
         # Note that we could write the _video flag here, but a user might
         # select this format explicitly (and this code is not run)
@@ -195,14 +196,12 @@ class FfmpegFormat(Format):
             return True
 
     def _can_write(self, request):
-        if request.mode[1] in (self.modes + "?"):
-            if request.extension in self.extensions:
-                return True
+        if request.extension in self.extensions:
+            return True
 
     # --
 
     class Reader(Format.Reader):
-
         _frame_catcher = None
         _read_gen = None
 
@@ -212,7 +211,7 @@ class FfmpegFormat(Format):
 
             elif sys.platform.startswith("win"):
                 # Ask ffmpeg for list of dshow device names
-                ffmpeg_api = _get_ffmpeg_api()
+                ffmpeg_api = imageio_ffmpeg
                 cmd = [
                     ffmpeg_api.get_ffmpeg_exe(),
                     "-list_devices",
@@ -222,18 +221,24 @@ class FfmpegFormat(Format):
                     "-i",
                     "dummy",
                 ]
-                # Set `shell=True` in sp.Popen to prevent popup of a command line
-                # window in frozen applications. Note: this would be a security
-                # vulnerability if user-input goes into the cmd.
-                proc = sp.Popen(
-                    cmd, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE, shell=True
+                # Set `shell=True` in sp.run to prevent popup of a command
+                # line window in frozen applications. Note: this would be a
+                # security vulnerability if user-input goes into the cmd.
+                # Note that the ffmpeg process returns with exit code 1 when
+                # using `-list_devices` (or `-list_options`), even if the
+                # command is successful, so we set `check=False` explicitly.
+                completed_process = sp.run(
+                    cmd,
+                    stdout=sp.PIPE,
+                    stderr=sp.PIPE,
+                    encoding="utf-8",
+                    shell=True,
+                    check=False,
                 )
-                proc.stdout.readline()
-                proc.terminate()
-                infos = proc.stderr.read().decode("utf-8", errors="ignore")
+
                 # Return device name at index
                 try:
-                    name = parse_device_names(infos)[index]
+                    name = parse_device_names(completed_process.stderr)[index]
                 except IndexError:
                     raise IndexError("No ffdshow camera at index %i." % index)
                 return "video=%s" % name
@@ -260,7 +265,7 @@ class FfmpegFormat(Format):
             fps=None,
         ):
             # Get generator functions
-            self._ffmpeg_api = _get_ffmpeg_api()
+            self._ffmpeg_api = imageio_ffmpeg
             # Process input args
             self._arg_loop = bool(loop)
             if size is None:
@@ -293,18 +298,15 @@ class FfmpegFormat(Format):
             regex_match = re.match(r"<video(\d+)>", self.request.filename)
             if regex_match:
                 self.request._video = self.request.filename
-            # Specify input framerate?
-            if self.request._video:
-                if "-framerate" not in str(self._arg_input_params):
-                    self._arg_input_params.extend(["-framerate", str(float(fps or 30))])
             # Get local filename
             if self.request._video:
                 index = int(regex_match.group(1))
                 self._filename = self._get_cam_inputname(index)
             else:
                 self._filename = self.request.get_local_filename()
-                # When passed to ffmpeg on command line, carets need to be escaped.
-                self._filename = self._filename.replace("^", "^^")
+                # When passed to imageio-ffmpeg (<0.4.2) on command line, carets need to be escaped.
+                if get_version() < (0, 4, 2):
+                    self._filename = self._filename.replace("^", "^^")
             # Determine pixel format and depth
             self._depth = 3
             if self._dtype.name == "uint8":
@@ -326,8 +328,32 @@ class FfmpegFormat(Format):
                 self._nframes = self.count_frames()
             self._meta["nframes"] = self._nframes
 
+            # Specify input framerate? (only on macOS)
+            # Ideally we'd get the supported framerate from the metadata, but we get the
+            # metadata when we boot ffmpeg ... maybe we could refactor this so we can
+            # get the metadata beforehand, but for now we'll just give it 2 tries on MacOS,
+            # one with fps 30 and one with fps 15.
+            need_input_fps = need_output_fps = False
+            if self.request._video and platform.system().lower() == "darwin":
+                if "-framerate" not in str(self._arg_input_params):
+                    need_input_fps = True
+                if not self.request.kwargs.get("fps", None):
+                    need_output_fps = True
+            if need_input_fps:
+                self._arg_input_params.extend(["-framerate", str(float(30))])
+            if need_output_fps:
+                self._arg_output_params.extend(["-r", str(float(30))])
+
             # Start ffmpeg subprocess and get meta information
-            self._initialize()
+            try:
+                self._initialize()
+            except IndexError:
+                # Specify input framerate again, this time different.
+                if need_input_fps:
+                    self._arg_input_params[-1] = str(float(15))
+                    self._initialize()
+                else:
+                    raise
 
             # For cameras, create thread that keeps reading the images
             if self.request._video:
@@ -396,7 +422,6 @@ class FfmpegFormat(Format):
             return self._meta
 
         def _initialize(self, index=0):
-
             # Close the current generator, and thereby terminate its subprocess
             if self._read_gen is not None:
                 self._read_gen.close()
@@ -513,7 +538,6 @@ class FfmpegFormat(Format):
     # --
 
     class Writer(Format.Writer):
-
         _write_gen = None
 
         def _open(
@@ -528,8 +552,10 @@ class FfmpegFormat(Format):
             ffmpeg_log_level="quiet",
             quality=5,
             macro_block_size=16,
+            audio_path=None,
+            audio_codec=None,
         ):
-            self._ffmpeg_api = _get_ffmpeg_api()
+            self._ffmpeg_api = imageio_ffmpeg
             self._filename = self.request.get_local_filename()
             self._pix_fmt = None
             self._depth = None
@@ -541,7 +567,6 @@ class FfmpegFormat(Format):
                 self._write_gen = None
 
         def _append_data(self, im, meta):
-
             # Get props of image
             h, w = im.shape[:2]
             size = w, h
@@ -586,7 +611,6 @@ class FfmpegFormat(Format):
             )
 
         def _initialize(self):
-
             # Close existing generator
             if self._write_gen is not None:
                 self._write_gen.close()
@@ -603,6 +627,8 @@ class FfmpegFormat(Format):
             pixelformat = self.request.kwargs.get("pixelformat", None)
             macro_block_size = self.request.kwargs.get("macro_block_size", 16)
             ffmpeg_log_level = self.request.kwargs.get("ffmpeg_log_level", None)
+            audio_path = self.request.kwargs.get("audio_path", None)
+            audio_codec = self.request.kwargs.get("audio_codec", None)
 
             macro_block_size = macro_block_size or 1  # None -> 1
 
@@ -620,6 +646,8 @@ class FfmpegFormat(Format):
                 ffmpeg_log_level=ffmpeg_log_level,
                 input_params=input_params,
                 output_params=output_params,
+                audio_path=audio_path,
+                audio_codec=audio_codec,
             )
 
             # Seed the generator (this is where the ffmpeg subprocess starts)
@@ -640,7 +668,7 @@ class FrameCatcher(threading.Thread):
         self._frame_is_new = False
         self._lock = threading.RLock()
         threading.Thread.__init__(self)
-        self.setDaemon(True)  # do not let this thread hold up Python shutdown
+        self.daemon = True  # do not let this thread hold up Python shutdown
         self._should_stop = False
         self.start()
 

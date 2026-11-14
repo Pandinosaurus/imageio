@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # imageio is distributed under the terms of the (new) BSD License.
 
-""" Read/Write images using pillow/PIL (legacy).
+"""Read/Write images using pillow/PIL (legacy).
 
 Backend Library: `Pillow <https://pillow.readthedocs.io/en/stable/>`_
 
@@ -14,7 +14,7 @@ in pillows official docs (see the Backend Library link).
 Parameters for Reading
 ----------------------
 pilmode : str
-    (Available for all formates except GIF-PIL)
+    (Available for all formats except GIF-PIL)
     From the Pillow documentation:
 
     * 'L' (8-bit pixels, grayscale)
@@ -35,7 +35,7 @@ pilmode : str
 
         L = R * 299/1000 + G * 587/1000 + B * 114/1000
 as_gray : bool
-    (Available for all formates except GIF-PIL)
+    (Available for all formats except GIF-PIL)
     If True, the image is converted using mode 'F'. When `mode` is
     not None and `as_gray` is True, the image is first converted
     according to `mode`, and the result is then "flattened" using
@@ -137,10 +137,8 @@ loop : int
     The number of iterations. Default 0 (meaning loop indefinitely).
 duration : {float, list}
     (Only available in GIF-PIL)
-    The duration (in seconds) of each frame. Either specify one value
+    The duration (in milliseconds) of each frame. Either specify one value
     that is used for all frames, or one value for each frame.
-    Note that in the GIF format the duration/delay is expressed in
-    hundredths of a second, which limits the precision of the duration.
 fps : float
     (Only available in GIF-PIL)
     The number of frames per second. If duration is not given, the
@@ -168,13 +166,13 @@ when saving RGB images.
 """
 
 import logging
+import sys
 import threading
 
 import numpy as np
 
 from ..core import Format, image_as_uint
 from ..core.request import URI_FILE, URI_BYTES
-
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +223,6 @@ class PillowFormat(Format):
     _description = ""
 
     def __init__(self, *args, plugin_id: str = None, **kwargs):
-
         super(PillowFormat, self).__init__(*args, **kwargs)
         # Used to synchronize _init_pillow(), see #244
         self._lock = threading.RLock()
@@ -262,22 +259,20 @@ class PillowFormat(Format):
 
     def _can_read(self, request):
         Image = self._init_pillow()
-        if request.mode[1] in (self.modes + "?"):
-            if self.plugin_id in Image.OPEN:
-                factory, accept = Image.OPEN[self.plugin_id]
-                if accept:
-                    if request.firstbytes and accept(request.firstbytes):
-                        return True
+        if self.plugin_id in Image.OPEN:
+            factory, accept = Image.OPEN[self.plugin_id]
+            if accept:
+                if request.firstbytes and accept(request.firstbytes):
+                    return True
 
     def _can_write(self, request):
         Image = self._init_pillow()
-        if request.mode[1] in (self.modes + "?"):
-            if request.extension in self.extensions or request._uri_type in [
-                URI_FILE,
-                URI_BYTES,
-            ]:
-                if self.plugin_id in Image.SAVE:
-                    return True
+        if request.extension in self.extensions or request._uri_type in [
+            URI_FILE,
+            URI_BYTES,
+        ]:
+            if self.plugin_id in Image.SAVE:
+                return True
 
     class Reader(Format.Reader):
         def _open(self, pilmode=None, as_gray=False):
@@ -341,7 +336,7 @@ class PillowFormat(Format):
                     self._seek(i)
             if self._im.palette and self._im.palette.dirty:
                 self._im.palette.rawmode_saved = self._im.palette.rawmode
-            self._im.getdata()[0]
+            self._im.load()
             im = pil_get_frame(self._im, **self._kwargs)
             return im, self._im.info
 
@@ -414,7 +409,6 @@ class PNGFormat(PillowFormat):
 
     class Writer(PillowFormat.Writer):
         def _open(self, compression=None, quantize=None, interlaced=False, **kwargs):
-
             # Better default for compression
             kwargs["compress_level"] = kwargs.get("compress_level", 9)
 
@@ -424,7 +418,7 @@ class PNGFormat(PillowFormat):
                 kwargs["compress_level"] = compression
             if quantize is not None:
                 for bits in range(1, 9):
-                    if 2 ** bits == quantize:
+                    if 2**bits == quantize:
                         break
                 else:
                     raise ValueError(
@@ -520,7 +514,6 @@ class JPEGFormat(PillowFormat):
 
     class Writer(PillowFormat.Writer):
         def _open(self, quality=75, progressive=False, optimize=False, **kwargs):
-
             # The JPEG quality can be between 0 (worst) and 100 (best)
             quality = int(quality)
             if quality < 0 or quality > 100:
@@ -601,7 +594,6 @@ class JPEG2000Format(PillowFormat):
 
     class Writer(PillowFormat.Writer):
         def _open(self, quality_mode="rates", quality=5, **kwargs):
-
             # Check quality - in Pillow it should be no higher than 95
             if quality_mode not in {"rates", "dB"}:
                 raise ValueError("Quality mode should be either 'rates' or 'dB'")
@@ -651,7 +643,7 @@ def save_pillow_close(im):
 def pil_try_read(im):
     try:
         # this will raise an IOError if the file is not readable
-        im.getdata()[0]
+        im.load()
     except IOError as e:
         site = "http://pillow.readthedocs.io/en/latest/installation.html"
         site += "#external-libraries"
@@ -671,7 +663,8 @@ def _palette_is_grayscale(pil_image):
     elif pil_image.info.get("transparency", None):  # see issue #475
         return False
     # get palette as an array with R, G, B columns
-    palette = np.asarray(pil_image.getpalette()).reshape((256, 3))
+    # Note: starting in pillow 9.1 palettes may have less than 256 entries
+    palette = np.asarray(pil_image.getpalette()).reshape((-1, 3))
     # Not all palette colors are used; unused colors have junk values.
     start, stop = pil_image.getextrema()
     valid_palette = palette[start : stop + 1]
@@ -698,7 +691,7 @@ def pil_get_frame(im, is_gray=None, as_gray=None, mode=None, dtype=None):
         if mode != im.mode:
             frame = im.convert(mode)
     elif as_gray:
-        pass  # don't do any auto-conversions (but do the explit one above)
+        pass  # don't do any auto-conversions (but do the explicit one above)
     elif im.mode == "P" and is_gray:
         # Paletted images that are already gray by their palette
         # are converted so that the resulting numpy array is 2D.
@@ -713,14 +706,18 @@ def pil_get_frame(im, is_gray=None, as_gray=None, mode=None, dtype=None):
             # We can do this ourselves. Pillow seems to sometimes screw
             # this up if a  multi-gif has a palette for each frame ...
             # Create palette array
-            p = np.frombuffer(im.palette.getdata()[1], np.uint8)
+            if hasattr(im.palette, "tobytes"):
+                palette_bytes = im.palette.tobytes()
+            else:  # pragma: no cover
+                palette_bytes = im.palette.getdata()[1]
+            p = np.frombuffer(palette_bytes, np.uint8)
             # Restore the raw mode that was saved to be used to parse the palette
             if hasattr(im.palette, "rawmode_saved"):
                 im.palette.rawmode = im.palette.rawmode_saved
             mode = im.palette.rawmode if im.palette.rawmode else im.palette.mode
             nchannels = len(mode)
             # Shape it.
-            p.shape = -1, nchannels
+            p = p.reshape(-1, nchannels)
             if p.shape[1] == 3 or (p.shape[1] == 4 and mode[-1] == "X"):
                 p = np.column_stack((p[:, :3], 255 * np.ones(p.shape[0], p.dtype)))
             # Swap the axes if the mode is in BGR and not RGB
@@ -746,6 +743,13 @@ def pil_get_frame(im, is_gray=None, as_gray=None, mode=None, dtype=None):
         frame = im.convert("RGBA")
     elif im.mode == "CMYK":
         frame = im.convert("RGB")
+    elif im.format == "GIF" and im.mode == "RGB":
+        # pillow9 returns RGBA images for subsequent frames so that it can deal
+        # with multi-frame GIF that use frame-level palettes and don't dispose
+        # all areas.
+
+        # For backwards compatibility, we promote everything to RGBA.
+        frame = im.convert("RGBA")
 
     # Apply a post-convert if necessary
     if as_gray:
@@ -767,7 +771,7 @@ def pil_get_frame(im, is_gray=None, as_gray=None, mode=None, dtype=None):
         if "S" in im.mode:
             dtype = dtype.replace("u", "i")
         frame = np.frombuffer(frame.tobytes(), dtype).copy()
-        frame.shape = shape[::-1]
+        frame = frame.reshape(shape[::-1])
     else:
         # Use uint16 for PNG's in mode I
         if im.format == "PNG" and im.mode == "I" and dtype is None:
@@ -778,7 +782,6 @@ def pil_get_frame(im, is_gray=None, as_gray=None, mode=None, dtype=None):
 
 
 def ndarray_to_pil(arr, format_str=None, prefer_uint8=True):
-
     from PIL import Image
 
     if arr.ndim == 3:
@@ -791,6 +794,9 @@ def ndarray_to_pil(arr, format_str=None, prefer_uint8=True):
 
         if arr.dtype.kind == "f":
             arr = image_as_uint(arr)
+
+        elif arr.dtype == np.uint8:
+            mode = mode_base = "L"
 
         elif prefer_uint8 and arr.max() < 256 and arr.min() >= 0:
             arr = arr.astype(np.uint8)
@@ -816,6 +822,13 @@ def ndarray_to_pil(arr, format_str=None, prefer_uint8=True):
             image_shape = (arr.shape[1], arr.shape[0])
             im = Image.frombytes(mode, image_shape, array_buffer)
         return im
+    elif mode == "I;16":
+        # fromarray stores the samples as mode "I". PNG cannot store
+        # that, so narrow to 16-bit using the array's endianness.
+        byteorder = arr.dtype.byteorder
+        if byteorder in ("=", "|"):
+            byteorder = "<" if sys.byteorder == "little" else ">"
+        return Image.fromarray(arr).convert("I;16" if byteorder == "<" else "I;16B")
     else:
         return Image.fromarray(arr, mode)
 

@@ -30,22 +30,54 @@ a format object using ``imageio.formats.add_format()``.
 # imageio.get_reader and imageio.get_writer.
 
 import sys
-from typing import Optional
+import warnings
+import contextlib
 
 import numpy as np
 from pathlib import Path
 
 from . import Array, asarray
-from .request import ImageMode, Request
+from .request import ImageMode
 from ..config import known_plugins, known_extensions, PluginConfig, FileExtension
 from ..config.plugins import _original_order
-from .imopen import imopen, _get_config
-
+from .imopen import imopen
 
 # survived for backwards compatibility
 # I don't know if external plugin code depends on it existing
 # We no longer do
 MODENAMES = ImageMode
+
+
+def _get_config(plugin):
+    """Old Plugin resolution logic.
+
+    Remove once we remove the old format manager.
+    """
+
+    extension_name = None
+
+    if Path(plugin).suffix.lower() in known_extensions:
+        extension_name = Path(plugin).suffix.lower()
+    elif plugin in known_plugins:
+        pass
+    elif plugin.lower() in known_extensions:
+        extension_name = plugin.lower()
+    elif "." + plugin.lower() in known_extensions:
+        extension_name = "." + plugin.lower()
+    else:
+        raise IndexError(f"No format known by name `{plugin}`.")
+
+    if extension_name is not None:
+        for plugin_name in [
+            x
+            for file_extension in known_extensions[extension_name]
+            for x in file_extension.priority
+        ]:
+            if known_plugins[plugin_name].is_legacy:
+                plugin = plugin_name
+                break
+
+    return known_plugins[plugin]
 
 
 class Format(object):
@@ -61,8 +93,8 @@ class Format(object):
     to see its documentation.
 
     To implement a specific format, one should create a subclass of
-    Format and the Format.Reader and Format.Writer classes. see
-    :doc:`plugins` for details.
+    Format and the Format.Reader and Format.Writer classes. See
+    :class:`imageio.plugins` for details.
 
     Parameters
     ----------
@@ -85,6 +117,27 @@ class Format(object):
     """
 
     def __init__(self, name, description, extensions=None, modes=None):
+        """Initialize the Plugin.
+
+        Parameters
+        ----------
+        name : str
+            A short name of this format. Users can select a format using its name.
+        description : str
+            A one-line description of the format.
+        extensions : str | list | None
+            List of filename extensions that this format supports. If a
+            string is passed it should be space or comma separated. The
+            extensions are used in the documentation and to allow users to
+            select a format by file extension. It is not used to determine
+            what format to use for reading/saving a file.
+        modes : str
+            A string containing the modes that this format can handle ('iIvV'),
+            “i” for an image, “I” for multiple images, “v” for a volume,
+            “V” for multiple volumes.
+            This attribute is used in the documentation and to select the
+            formats when reading/saving a file.
+        """
 
         # Store name and description
         self._name = name.upper()
@@ -195,9 +248,50 @@ class Format(object):
         return self._can_write(request)
 
     def _can_read(self, request):  # pragma: no cover
+        """Check if Plugin can read from ImageResource.
+
+        This method is called when the format manager is searching for a format
+        to read a certain image. Return True if this format can do it.
+
+        The format manager is aware of the extensions and the modes that each
+        format can handle. It will first ask all formats that *seem* to be able
+        to read it whether they can. If none can, it will ask the remaining
+        formats if they can: the extension might be missing, and this allows
+        formats to provide functionality for certain extensions, while giving
+        preference to other plugins.
+
+        If a format says it can, it should live up to it. The format would
+        ideally check the request.firstbytes and look for a header of some kind.
+
+        Parameters
+        ----------
+        request : Request
+            A request that can be used to access the ImageResource and obtain
+            metadata about it.
+
+        Returns
+        -------
+        can_read : bool
+            True if the plugin can read from the ImageResource, False otherwise.
+
+        """
         return None  # Plugins must implement this
 
     def _can_write(self, request):  # pragma: no cover
+        """Check if Plugin can write to ImageResource.
+
+        Parameters
+        ----------
+        request : Request
+            A request that can be used to access the ImageResource and obtain
+            metadata about it.
+
+        Returns
+        -------
+        can_read : bool
+            True if the plugin can write to the ImageResource, False otherwise.
+
+        """
         return None  # Plugins must implement this
 
     # -----
@@ -243,7 +337,7 @@ class Format(object):
             try:
                 self.close()
             except Exception:  # pragma: no cover
-                pass  # Supress noise when called during interpreter shutdown
+                pass  # Suppress noise when called during interpreter shutdown
 
         def close(self):
             """Flush and close the reader/writer.
@@ -369,7 +463,7 @@ class Format(object):
             index is omitted or None, return the file's (global) meta data.
 
             Note that ``get_data`` also provides the meta data for the returned
-            image as an atrribute of that image.
+            image as an attribute of that image.
 
             The meta data is a dict, which shape depends on the format.
             E.g. for JPEG, the dict maps group names to subdicts and each
@@ -424,7 +518,7 @@ class Format(object):
 
             Plugins must implement this.
 
-            The retured scalar specifies the number of images in the series.
+            The returned scalar specifies the number of images in the series.
             See Reader.get_length for more information.
             """
             raise NotImplementedError()
@@ -537,7 +631,15 @@ class FormatManager(object):
 
     @property
     def _formats(self):
-        return [x for x in known_plugins.values() if x.is_legacy]
+        available_formats = list()
+
+        for config in known_plugins.values():
+            with contextlib.suppress(ImportError):
+                # if an exception is raised, then format not installed
+                if config.is_legacy and config.format is not None:
+                    available_formats.append(config)
+
+        return available_formats
 
     def __repr__(self):
         return f"<imageio.FormatManager with {len(self._formats)} registered formats>"
@@ -558,6 +660,13 @@ class FormatManager(object):
         return "\n".join(ss)
 
     def __getitem__(self, name):
+        warnings.warn(
+            "The usage of `FormatManager` is deprecated and it will be "
+            "removed in Imageio v3. Use `iio.imopen` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if not isinstance(name, str):
             raise ValueError(
                 "Looking up a format should be done by name or by extension."
@@ -575,7 +684,7 @@ class FormatManager(object):
                 # no plugin can read the file
                 pass
 
-        config = _get_config(name.upper(), legacy_mode=True)
+        config = _get_config(name.upper())
 
         try:
             return config.format
@@ -604,7 +713,19 @@ class FormatManager(object):
 
         Also see the ``IMAGEIO_FORMAT_ORDER`` environment variable.
         """
-        # Check and sanitize imput
+
+        warnings.warn(
+            "`FormatManager` is deprecated and it will be removed in ImageIO v3."
+            " Migrating `FormatManager.sort` depends on your use-case:\n"
+            "\t- modify `iio.config.known_plugins` to specify the search order for "
+            "unrecognized formats.\n"
+            "\t- modify `iio.config.known_extensions[<extension>].priority`"
+            " to control a specific extension.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        # Check and sanitize input
         for name in names:
             if not isinstance(name, str):
                 raise TypeError("formats.sort() accepts only string names.")
@@ -614,18 +735,23 @@ class FormatManager(object):
                     "contain dots `.` or commas `,`."
                 )
 
-        if len(names) == 0:
+        should_reset = len(names) == 0
+        if should_reset:
             names = _original_order
 
         sane_names = [name.strip().upper() for name in names if name != ""]
+
+        # enforce order for every extension that uses it
         flat_extensions = [
             ext for ext_list in known_extensions.values() for ext in ext_list
         ]
+        for extension in flat_extensions:
+            if should_reset:
+                extension.reset()
+                continue
 
-        # enforce order for every extension that uses it
-        for name in reversed(sane_names):
-            for extension in flat_extensions:
-                for plugin in [x for x in extension.priority]:
+            for name in reversed(sane_names):
+                for plugin in [x for x in extension.default_priority]:
                     if plugin.endswith(name):
                         extension.priority.remove(plugin)
                         extension.priority.insert(0, plugin)
@@ -647,6 +773,15 @@ class FormatManager(object):
         same name already exists, an error is raised, unless overwrite is True,
         in which case the current format is replaced.
         """
+
+        warnings.warn(
+            "`FormatManager` is deprecated and it will be removed in ImageIO v3."
+            "To migrate `FormatManager.add_format` add the plugin directly to "
+            "`iio.config.known_plugins`.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if not isinstance(iio_format, Format):
             raise ValueError("add_format needs argument to be a Format object")
         elif not overwrite and iio_format.name in self.get_format_names():
@@ -682,7 +817,7 @@ class FormatManager(object):
             )
             known_extensions.setdefault(extension, list()).append(ext)
 
-    def search_read_format(self, request: Request) -> Optional[Format]:
+    def search_read_format(self, request):
         """search_read_format(request)
 
         Search a format that can read a file according to the given request.
@@ -692,12 +827,20 @@ class FormatManager(object):
         try:
             # in legacy_mode imopen returns a LegacyPlugin
             return imopen(request, request.mode.io_mode, legacy_mode=True)._format
+        except AttributeError:
+            warnings.warn(
+                "ImageIO now uses a v3 plugin when reading this format."
+                " Please migrate to the v3 API (preferred) or use imageio.v2.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return None
         except ValueError:
             # no plugin can read this request
             # but the legacy API doesn't raise
             return None
 
-    def search_write_format(self, request: Request) -> Optional[Format]:
+    def search_write_format(self, request):
         """search_write_format(request)
 
         Search a format that can write a file according to the given request.
@@ -707,6 +850,14 @@ class FormatManager(object):
         try:
             # in legacy_mode imopen returns a LegacyPlugin
             return imopen(request, request.mode.io_mode, legacy_mode=True)._format
+        except AttributeError:
+            warnings.warn(
+                "ImageIO now uses a v3 plugin when writing this format."
+                " Please migrate to the v3 API (preferred) or use imageio.v2.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return None
         except ValueError:
             # no plugin can write this request
             # but the legacy API doesn't raise
@@ -714,6 +865,14 @@ class FormatManager(object):
 
     def get_format_names(self):
         """Get the names of all registered formats."""
+
+        warnings.warn(
+            "`FormatManager` is deprecated and it will be removed in ImageIO v3."
+            "To migrate `FormatManager.get_format_names` use `iio.config.known_plugins.keys()` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         return [f.name for f in self._formats]
 
     def show(self):

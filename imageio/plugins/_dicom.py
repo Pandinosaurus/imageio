@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 # imageio is distributed under the terms of the (new) BSD License.
 
-""" Plugin for reading DICOM files.
-"""
+"""Plugin for reading DICOM files."""
 
 # todo: Use pydicom:
 # * Note: is not py3k ready yet
@@ -18,7 +17,6 @@ import struct
 import logging
 
 import numpy as np
-
 
 logger = logging.getLogger(__name__)
 
@@ -531,7 +529,7 @@ class SimpleDicomReader(object):
                 data = data.astype(np.float32)
             else:
                 # Determine required range
-                minReq, maxReq = data.min(), data.max()
+                minReq, maxReq = data.min().item(), data.max().item()
                 minReq = min([minReq, minReq * slope + offset, maxReq * slope + offset])
                 maxReq = max([maxReq, minReq * slope + offset, maxReq * slope + offset])
 
@@ -540,21 +538,21 @@ class SimpleDicomReader(object):
                 if minReq < 0:
                     # Signed integer type
                     maxReq = max([-minReq, maxReq])
-                    if maxReq < 2 ** 7:
+                    if maxReq < 2**7:
                         dtype = np.int8
-                    elif maxReq < 2 ** 15:
+                    elif maxReq < 2**15:
                         dtype = np.int16
-                    elif maxReq < 2 ** 31:
+                    elif maxReq < 2**31:
                         dtype = np.int32
                     else:
                         dtype = np.float32
                 else:
                     # Unsigned integer type
-                    if maxReq < 2 ** 8:
+                    if maxReq < 2**8:
                         dtype = np.int8
-                    elif maxReq < 2 ** 16:
+                    elif maxReq < 2**16:
                         dtype = np.int16
-                    elif maxReq < 2 ** 32:
+                    elif maxReq < 2**32:
                         dtype = np.int32
                     else:
                         dtype = np.float32
@@ -703,7 +701,16 @@ class DicomSeries(object):
         self._entries.append(dcm)
 
     def _sort(self):
-        self._entries.sort(key=lambda k: k.InstanceNumber)
+        self._entries.sort(
+            key=lambda k: (
+                k.InstanceNumber,
+                (
+                    k.ImagePositionPatient[2]
+                    if hasattr(k, "ImagePositionPatient")
+                    else None
+                ),
+            )
+        )
 
     def _finish(self):
         """
@@ -798,9 +805,7 @@ def process_directory(request, progressIndicator, readPixelData=False):
     elif os.path.isfile(request.filename):
         path = os.path.dirname(request.filename)
     else:  # pragma: no cover - tested earlier
-        raise ValueError(
-            "Dicom plugin needs a valid filename to examine " "the directory"
-        )
+        raise ValueError("Dicom plugin needs a valid filename to examine the directory")
 
     # Check files
     files = []

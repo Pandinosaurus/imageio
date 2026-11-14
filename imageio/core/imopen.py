@@ -1,74 +1,27 @@
 from pathlib import Path
-from typing import Any, Union
+import warnings
 
-from .request import (
-    IOMode,
-    Request,
-    InitializationError,
-    URI_FILENAME,
-    SPECIAL_READ_URIS,
-)
-from ..config.plugins import PluginConfig
 from ..config import known_plugins
 from ..config.extensions import known_extensions
-
-
-def _get_config(plugin: str, legacy_mode: bool) -> PluginConfig:
-    """Look up the config for the given plugin name
-
-    Factored out for legacy compatibility with FormatManager. Move
-    back into imopen in V3.
-    """
-
-    # for v2 compatibility, delete in v3
-    extension_name = None
-
-    if legacy_mode and Path(plugin).suffix.lower() in known_extensions:
-        # for v2 compatibility, delete in v3
-        extension_name = Path(plugin).suffix.lower()
-    elif plugin in known_plugins:
-        pass
-    elif not legacy_mode:
-        raise ValueError(f"`{plugin}` is not a registered plugin name.")
-    elif plugin.upper() in known_plugins:
-        # for v2 compatibility, delete in v3
-        plugin = plugin.upper()
-    elif plugin.lower() in known_extensions:
-        # for v2 compatibility, delete in v3
-        extension_name = plugin.lower()
-    elif "." + plugin.lower() in known_extensions:
-        # for v2 compatibility, delete in v3
-        extension_name = "." + plugin.lower()
-    else:
-        # for v2 compatibility, delete in v3
-        raise IndexError(f"No format known by name `{plugin}`.")
-
-    # for v2 compatibility, delete in v3
-    if extension_name is not None:
-        for plugin_name in [
-            x
-            for file_extension in known_extensions[extension_name]
-            for x in file_extension.priority
-        ]:
-            if known_plugins[plugin_name].is_legacy:
-                plugin = plugin_name
-                break
-        else:  # pragma: no cover
-            # currently there is no format that is only supported
-            # by v3 plugins
-            raise IndexError(f"No format known by name `{plugin}`.")
-
-    return known_plugins[plugin]
+from .request import (
+    SPECIAL_READ_URIS,
+    URI_FILENAME,
+    InitializationError,
+    IOMode,
+    Request,
+)
 
 
 def imopen(
     uri,
-    io_mode: str,
+    io_mode,
     *,
-    plugin: Union[str, Any] = None,
-    legacy_mode: bool = True,
+    plugin=None,
+    extension=None,
+    format_hint=None,
+    legacy_mode=False,
     **kwargs,
-) -> Any:
+):
     """Open an ImageResource.
 
     .. warning::
@@ -79,8 +32,8 @@ def imopen(
     Parameters
     ----------
     uri : str or pathlib.Path or bytes or file or Request
-        The :doc:`ImageResources <getting_started.request>` to load the image
-        from.
+        The :doc:`ImageResource <../../user_guide/requests>` to load the
+        image from.
     io_mode : str
         The mode in which the file is opened. Possible values are::
 
@@ -96,13 +49,20 @@ def imopen(
             ``I`` for multiple images,
             ``v`` for a single volume,
             ``V`` for multiple volumes,
-            ``?`` for don't care (default)
+            ``?`` for don't care
 
     plugin : str, Plugin, or None
-        The plugin to use. If set to None (default) imopen will perform a
-        search for a matching plugin.
+        The plugin to use. If set to None imopen will perform a
+        search for a matching plugin. If not None, this takes priority over
+        the provided format hint.
+    extension : str
+        If not None, treat the provided ImageResource as if it had the given
+        extension. This affects the order in which backends are considered, and
+        when writing this may also influence the format used when encoding.
+    format_hint : str
+        Deprecated. Use `extension` instead.
     legacy_mode : bool
-        If true (default) use the v2 behavior when searching for a suitable
+        If true use the v2 behavior when searching for a suitable
         plugin. This will ignore v3 plugins and will check ``plugin``
         against known extensions if no plugin with the given name can be found.
     **kwargs : Any
@@ -117,6 +77,13 @@ def imopen(
     Passing a ``Request`` as the uri is only supported if ``legacy_mode``
     is ``True``. In this case ``io_mode`` is ignored.
 
+    Using the kwarg ``format_hint`` does not enforce the given format. It merely
+    provides a `hint` to the selection process and plugin. The selection
+    processes uses this hint for optimization; however, a plugin's decision how
+    to read a ImageResource will - typically - still be based on the content of
+    the resource.
+
+
     Examples
     --------
 
@@ -130,32 +97,42 @@ def imopen(
     """
 
     if isinstance(uri, Request) and legacy_mode:
+        warnings.warn(
+            "`iio.core.Request` is a low-level object and using it"
+            " directly as input to `imopen` is discouraged. This will raise"
+            " an exception in ImageIO v3.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         request = uri
         uri = request.raw_uri
         io_mode = request.mode.io_mode
+        request.format_hint = format_hint
     else:
-        request = Request(uri, io_mode)
+        request = Request(uri, io_mode, format_hint=format_hint, extension=extension)
 
-    # plugin specified, no search needed
+    source = "<bytes>" if isinstance(uri, bytes) else uri
+
+    # fast-path based on plugin
     # (except in legacy mode)
     if plugin is not None:
         if isinstance(plugin, str):
             try:
-                config = _get_config(plugin, legacy_mode)
-            except (IndexError, ValueError):
+                config = known_plugins[plugin]
+            except KeyError:
                 request.finish()
-                raise
+                raise ValueError(
+                    f"`{plugin}` is not a registered plugin name."
+                ) from None
 
             def loader(request, **kwargs):
                 return config.plugin_class(request, **kwargs)
 
-        elif not legacy_mode:
+        else:
 
             def loader(request, **kwargs):
                 return plugin(request, **kwargs)
-
-        else:
-            raise ValueError("The `plugin` argument must be a string.")
 
         try:
             return loader(request, **kwargs)
@@ -173,20 +150,41 @@ def imopen(
         except Exception as generic_error:
             err_from = generic_error
             err_type = IOError
-            err_msg = f"An unknown error occured while initializing plugin `{plugin}`."
+            err_msg = f"An unknown error occurred while initializing plugin `{plugin}`."
 
         request.finish()
         raise err_type(err_msg) from err_from
+
+    # fast-path based on format_hint
+    if request.format_hint is not None:
+        for candidate_format in known_extensions[format_hint]:
+            for plugin_name in candidate_format.priority:
+                config = known_plugins[plugin_name]
+
+                try:
+                    candidate_plugin = config.plugin_class
+                except ImportError:
+                    # not installed
+                    continue
+
+                try:
+                    plugin_instance = candidate_plugin(request, **kwargs)
+                except InitializationError:
+                    # file extension doesn't match file type
+                    continue
+
+                return plugin_instance
+        else:
+            resource = (
+                "<bytes>" if isinstance(request.raw_uri, bytes) else request.raw_uri
+            )
+            warnings.warn(f"`{resource}` can not be opened as a `{format_hint}` file.")
 
     # fast-path based on file extension
     if request.extension in known_extensions:
         for candidate_format in known_extensions[request.extension]:
             for plugin_name in candidate_format.priority:
                 config = known_plugins[plugin_name]
-
-                # v2 compatibility; delete in v3
-                if legacy_mode and not config.is_legacy:
-                    continue
 
                 try:
                     candidate_plugin = config.plugin_class
@@ -203,31 +201,34 @@ def imopen(
                 return plugin_instance
 
     # error out for read-only special targets
-    # this is again hacky; can we come up with a better solution for this?
+    # this is hacky; can we come up with a better solution for this?
     if request.mode.io_mode == IOMode.write:
         if isinstance(uri, str) and uri.startswith(SPECIAL_READ_URIS):
+            request.finish()
             err_type = ValueError if legacy_mode else IOError
-            err_msg = f"`{uri}` is read-only."
+            err_msg = f"`{source}` is read-only."
             raise err_type(err_msg)
 
     # error out for directories
-    # this is a bit hacky and should be cleaned once we decide
-    # how to gracefully handle DICOM
     if request._uri_type == URI_FILENAME and Path(request.raw_uri).is_dir():
+        request.finish()
         err_type = ValueError if legacy_mode else IOError
         err_msg = (
-            "ImageIO does not generally support reading folders. "
-            "Limited support may be available via specific plugins. "
-            "Specify the plugin explicitly using the `plugin` kwarg, e.g. `plugin='DICOM'`"
+            "ImageIO does not support reading folders. "
+            "Use a URI pointing to an individual file instead."
         )
         raise err_type(err_msg)
 
+    # close the current request here and use fresh/new ones while trying each
+    # plugin This is slow (means potentially reopening a resource several
+    # times), but should only happen rarely because this is the fallback if all
+    # else fails.
+    request.finish()
+
     # fallback option: try all plugins
     for config in known_plugins.values():
-        # Note: for v2 compatibility
-        # this branch can be removed in ImageIO v3.0
-        if legacy_mode and not config.is_legacy:
-            continue
+        # each plugin gets its own request
+        request = Request(uri, io_mode, format_hint=format_hint)
 
         try:
             plugin_instance = config.plugin_class(request, **kwargs)
@@ -239,7 +240,7 @@ def imopen(
             return plugin_instance
 
     err_type = ValueError if legacy_mode else IOError
-    err_msg = f"Could not find a backend to open `{uri}`` with iomode `{io_mode}`."
+    err_msg = f"Could not find a backend to open `{source}`` with iomode `{io_mode}`."
 
     # check if a missing plugin could help
     if request.extension in known_extensions:

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # imageio is distributed under the terms of the (new) BSD License.
 
-""" Read/Write SWF files.
+"""Read/Write SWF files.
 
 Backend: internal
 
@@ -51,7 +51,6 @@ import numpy as np
 
 from ..core import Format, read_n_bytes, image_as_uint
 
-
 logger = logging.getLogger(__name__)
 
 _swf = None  # lazily loaded in lib()
@@ -68,15 +67,13 @@ class SWFFormat(Format):
     """See :mod:`imageio.plugins.swf`"""
 
     def _can_read(self, request):
-        if request.mode[1] in (self.modes + "?"):
-            tmp = request.firstbytes[0:3].decode("ascii", "ignore")
-            if tmp in ("FWS", "CWS"):
-                return True
+        tmp = request.firstbytes[0:3].decode("ascii", "ignore")
+        if tmp in ("FWS", "CWS"):
+            return True
 
     def _can_write(self, request):
-        if request.mode[1] in (self.modes + "?"):
-            if request.extension in self.extensions:
-                return True
+        if request.extension in self.extensions:
+            return True
 
     # -- reader
 

@@ -5,8 +5,6 @@ supporting backend.
 
 """
 
-from typing import List, Dict
-
 
 class FileExtension:
     """File Extension Metadata
@@ -37,6 +35,8 @@ class FileExtension:
     external_link : str
         A link to further information about the format. Typically, the format's
         specification.
+    volume_support : str
+        If True, the format/extension supports volumetric image data.
 
     Examples
     --------
@@ -52,17 +52,23 @@ class FileExtension:
     def __init__(
         self,
         *,
-        extension: str,
-        priority: List[str],
-        name: str = None,
-        description: str = None,
-        external_link: str = None
-    ) -> None:
+        extension,
+        priority,
+        name=None,
+        description=None,
+        external_link=None,
+        volume_support=False,
+    ):
         self.extension = extension
         self.priority = priority
         self.name = name
         self.description = description
         self.external_link = external_link
+        self.default_priority = priority.copy()
+        self.volume_support = volume_support
+
+    def reset(self):
+        self.priority = self.default_priority.copy()
 
 
 extension_list = [
@@ -77,6 +83,12 @@ extension_list = [
         priority=["RAW-FI"],
     ),
     FileExtension(
+        name="Animated Portable Network Graphics",
+        external_link="https://en.wikipedia.org/wiki/APNG",
+        extension=".apng",
+        priority=["pillow", "pyav"],
+    ),
+    FileExtension(
         name="Audio Video Interleave",
         extension=".avi",
         priority=["FFMPEG"],
@@ -87,9 +99,19 @@ extension_list = [
         priority=["RAW-FI"],
     ),
     FileExtension(
+        extension=".blp",
+        priority=["pillow"],
+    ),
+    FileExtension(
         name="Bitmap",
         extension=".bmp",
-        priority=["pillow", "BMP-PIL", "BMP-FI", "ITK"],
+        priority=["pillow", "BMP-PIL", "BMP-FI", "ITK", "pyav", "opencv"],
+        external_link="https://en.wikipedia.org/wiki/BMP_file_format",
+    ),
+    FileExtension(
+        name="Device-Independent Bitmap",
+        extension=".dip",
+        priority=["opencv"],
         external_link="https://en.wikipedia.org/wiki/BMP_file_format",
     ),
     FileExtension(
@@ -136,7 +158,7 @@ extension_list = [
     FileExtension(
         name="Computerized Tomography",
         extension=".ct",
-        priority=["DICOM"],
+        priority=["DICOM", "pydicom"],
     ),
     FileExtension(
         name="Windows Cursor Icons",
@@ -155,7 +177,7 @@ extension_list = [
     FileExtension(
         name="DICOM file format",
         extension=".dcm",
-        priority=["DICOM", "ITK"],
+        priority=["DICOM", "pydicom", "ITK"],
     ),
     FileExtension(
         extension=".dcr",
@@ -173,13 +195,13 @@ extension_list = [
     ),
     FileExtension(
         name="Windows Bitmap",
-        extension=".DIB",
+        extension=".dib",
         priority=["pillow", "DIB-PIL"],
     ),
     FileExtension(
         name="DICOM file format",
         extension=".dicom",
-        priority=["ITK"],
+        priority=["ITK", "pydicom"],
     ),
     FileExtension(
         extension=".dng",
@@ -213,9 +235,10 @@ extension_list = [
         priority=["RAW-FI"],
     ),
     FileExtension(
-        name="ILM OpenEXR",
+        name="OpenEXR",
         extension=".exr",
-        priority=["EXR-FI"],
+        external_link="https://openexr.readthedocs.io/en/latest/",
+        priority=["EXR-FI", "pyav", "opencv"],
     ),
     FileExtension(
         extension=".fff",
@@ -229,7 +252,7 @@ extension_list = [
     FileExtension(
         name="Flexible Image Transport System File",
         extension=".fits",
-        priority=["pillow", "FITS-PIL", "FITS"],
+        priority=["pillow", "FITS-PIL", "FITS", "pyav"],
     ),
     FileExtension(
         name="Autodesk FLC Animation",
@@ -279,12 +302,12 @@ extension_list = [
     FileExtension(
         name="Grassroots DICOM",
         extension=".gdcm",
-        priority=["ITK"],
+        priority=["ITK", "pydicom"],
     ),
     FileExtension(
         name="Graphics Interchange Format",
         extension=".gif",
-        priority=["pillow", "GIF-PIL"],
+        priority=["pillow", "GIF-PIL", "pyav"],
     ),
     FileExtension(
         name="UMDS GIPL",
@@ -319,11 +342,15 @@ extension_list = [
     FileExtension(
         name="High Dynamic Range Image",
         extension=".hdr",
-        priority=["HDR-FI", "ITK"],
+        priority=["HDR-FI", "ITK", "opencv"],
     ),
     FileExtension(
         extension=".ia",
         priority=["RAW-FI"],
+    ),
+    FileExtension(
+        extension=".icb",
+        priority=["pillow"],
     ),
     FileExtension(
         name="Mac OS Icon File",
@@ -333,7 +360,7 @@ extension_list = [
     FileExtension(
         name="Windows Icon File",
         extension=".ico",
-        priority=["pillow", "ICO-FI", "ICO-PIL"],
+        priority=["pillow", "ICO-FI", "ICO-PIL", "pyav"],
     ),
     FileExtension(
         name="ILBM Interleaved Bitmap",
@@ -375,12 +402,12 @@ extension_list = [
     FileExtension(
         name="JPEG 2000",
         extension=".j2c",
-        priority=["pillow", "J2K-FI", "JPEG2000-PIL"],
+        priority=["pillow", "J2K-FI", "JPEG2000-PIL", "pyav"],
     ),
     FileExtension(
         name="JPEG 2000",
         extension=".j2k",
-        priority=["pillow", "J2K-FI", "JPEG2000-PIL"],
+        priority=["pillow", "J2K-FI", "JPEG2000-PIL", "pyav"],
     ),
     FileExtension(
         name="JPEG",
@@ -400,7 +427,7 @@ extension_list = [
     FileExtension(
         name="JPEG 2000",
         extension=".jp2",
-        priority=["pillow", "JP2-FI", "JPEG2000-PIL"],
+        priority=["pillow", "JP2-FI", "JPEG2000-PIL", "pyav", "opencv"],
     ),
     FileExtension(
         name="JPEG 2000",
@@ -410,12 +437,12 @@ extension_list = [
     FileExtension(
         name="JPEG",
         extension=".jpe",
-        priority=["pillow", "JPEG-FI", "JPEG-PIL"],
+        priority=["pillow", "JPEG-FI", "JPEG-PIL", "opencv"],
     ),
     FileExtension(
         name="Joint Photographic Experts Group",
         extension=".jpeg",
-        priority=["pillow", "JPEG-PIL", "JPEG-FI", "ITK", "GDAL"],
+        priority=["pillow", "JPEG-PIL", "JPEG-FI", "ITK", "GDAL", "pyav", "opencv"],
     ),
     FileExtension(
         name="JPEG 2000",
@@ -425,7 +452,7 @@ extension_list = [
     FileExtension(
         name="Joint Photographic Experts Group",
         extension=".jpg",
-        priority=["pillow", "JPEG-PIL", "JPEG-FI", "ITK", "GDAL"],
+        priority=["pillow", "JPEG-PIL", "JPEG-FI", "ITK", "GDAL", "pyav", "opencv"],
     ),
     FileExtension(
         name="JPEG 2000",
@@ -472,7 +499,7 @@ extension_list = [
     FileExtension(
         name="ZEISS LSM",
         extension=".lsm",
-        priority=["ITK", "TIFF"],
+        priority=["tifffile", "ITK", "TIFF"],
     ),
     FileExtension(
         name="McIdas area file",
@@ -511,7 +538,7 @@ extension_list = [
     FileExtension(
         name="Matroska Multimedia Container",
         extension=".mkv",
-        priority=["FFMPEG"],
+        priority=["FFMPEG", "pyav"],
     ),
     FileExtension(
         name="Medical Imaging NetCDF",
@@ -531,22 +558,22 @@ extension_list = [
     FileExtension(
         name="QuickTime File Format",
         extension=".mov",
-        priority=["FFMPEG"],
+        priority=["FFMPEG", "pyav"],
     ),
     FileExtension(
         name="MPEG-4 Part 14",
         extension=".mp4",
-        priority=["FFMPEG"],
+        priority=["FFMPEG", "pyav"],
     ),
     FileExtension(
-        name="Moving Picture Experts Group",
+        name="MPEG-1 Moving Picture Experts Group",
         extension=".mpeg",
-        priority=["FFMPEG"],
+        priority=["FFMPEG", "pyav"],
     ),
     FileExtension(
         name="Moving Picture Experts Group",
         extension=".mpg",
-        priority=["FFMPEG"],
+        priority=["pillow", "FFMPEG", "pyav"],
     ),
     FileExtension(
         name="JPEG Multi-Picture Format",
@@ -556,7 +583,7 @@ extension_list = [
     FileExtension(
         name="Magnetic resonance imaging",
         extension=".mri",
-        priority=["DICOM"],
+        priority=["DICOM", "pydicom"],
     ),
     FileExtension(
         extension=".mrw",
@@ -569,7 +596,7 @@ extension_list = [
     ),
     FileExtension(
         extension=".nef",
-        priority=["RAW-FI"],
+        priority=["RAW-FI", "rawpy"],
     ),
     FileExtension(
         extension=".nhdr",
@@ -592,6 +619,7 @@ extension_list = [
         name="Numpy Array",
         extension=".npz",
         priority=["NPZ"],
+        volume_support=True,
     ),
     FileExtension(
         extension=".nrrd",
@@ -606,9 +634,13 @@ extension_list = [
         priority=["RAW-FI"],
     ),
     FileExtension(
+        extension=".palm",
+        priority=["pillow"],
+    ),
+    FileExtension(
         name="Portable Bitmap",
         extension=".pbm",
-        priority=["PGM-FI", "PGMRAW-FI"],
+        priority=["PGM-FI", "PGMRAW-FI", "pyav", "opencv"],
     ),
     FileExtension(
         name="Kodak PhotoCD",
@@ -626,22 +658,26 @@ extension_list = [
         priority=["pillow", "PCX-FI", "PCX-PIL"],
     ),
     FileExtension(
+        extension=".pdf",
+        priority=["pillow"],
+    ),
+    FileExtension(
         extension=".pef",
         priority=["RAW-FI"],
     ),
     FileExtension(
         extension=".pfm",
-        priority=["PFM-FI"],
+        priority=["PFM-FI", "pyav", "opencv"],
     ),
     FileExtension(
         name="Portable Greymap",
         extension=".pgm",
-        priority=["PGM-FI", "PGMRAW-FI"],
+        priority=["pillow", "PGM-FI", "PGMRAW-FI", "pyav", "opencv"],
     ),
     FileExtension(
         name="Macintosh PICT",
         extension=".pic",
-        priority=["PICT-FI", "ITK"],
+        priority=["PICT-FI", "ITK", "opencv"],
     ),
     FileExtension(
         name="Macintosh PICT",
@@ -651,17 +687,17 @@ extension_list = [
     FileExtension(
         name="Portable Network Graphics",
         extension=".png",
-        priority=["pillow", "PNG-PIL", "PNG-FI", "ITK"],
+        priority=["pillow", "PNG-PIL", "PNG-FI", "ITK", "pyav", "opencv"],
+    ),
+    FileExtension(
+        name="Portable Image Format",
+        extension=".pnm",
+        priority=["pillow", "opencv"],
     ),
     FileExtension(
         name="Pbmplus image",
         extension=".ppm",
-        priority=["pillow", "PPM-PIL"],
-    ),
-    FileExtension(
-        name="Pbmplus image",
-        extension=".pbm",
-        priority=["pillow", "PPM-PIL"],
+        priority=["pillow", "PPM-PIL", "pyav"],
     ),
     FileExtension(
         name="Pbmplus image",
@@ -669,9 +705,14 @@ extension_list = [
         priority=["pillow", "PPM-PIL", "PPM-FI"],
     ),
     FileExtension(
+        name="Portable image format",
+        extension=".pxm",
+        priority=["opencv"],
+    ),
+    FileExtension(
         name="Portable Pixelmap (ASCII)",
         extension=".ppm",
-        priority=["PPM-FI"],
+        priority=["PPM-FI", "opencv"],
     ),
     FileExtension(
         name="Portable Pixelmap (Raw)",
@@ -712,11 +753,16 @@ extension_list = [
     FileExtension(
         name="Sun Raster File",
         extension=".ras",
-        priority=["pillow", "SUN-PIL", "RAS-FI"],
+        priority=["pillow", "SUN-PIL", "RAS-FI", "pyav", "opencv"],
+    ),
+    FileExtension(
+        name="Sun Raster File",
+        extension=".sr",
+        priority=["opencv"],
     ),
     FileExtension(
         extension=".raw",
-        priority=["RAW-FI", "LYTRO-ILLUM-RAW", "LYTRO-F01-RAW"],
+        priority=["RAW-FI", "LYTRO-ILLUM-RAW", "LYTRO-F01-RAW", "rawpy"],
     ),
     FileExtension(
         extension=".rdc",
@@ -747,7 +793,7 @@ extension_list = [
     FileExtension(
         name="Silicon Graphics Image",
         extension=".sgi",
-        priority=["pillow", "SGI-PIL"],
+        priority=["pillow", "SGI-PIL", "pyav"],
     ),
     FileExtension(
         name="SPE File Format",
@@ -776,32 +822,64 @@ extension_list = [
     ),
     FileExtension(
         extension=".stk",
-        priority=["TIFF"],
+        priority=["tifffile", "TIFF"],
     ),
     FileExtension(
-        name="Shockwave Flash",
+        name="ShockWave Flash",
         extension=".swf",
-        priority=["SWF"],
+        priority=["SWF", "pyav"],
     ),
     FileExtension(
         name="Truevision TGA",
         extension=".targa",
-        priority=["TARGA-FI"],
+        priority=["pillow", "TARGA-FI"],
     ),
     FileExtension(
         name="Truevision TGA",
         extension=".tga",
-        priority=["pillow", "TGA-PIL", "TARGA-FI"],
+        priority=["pillow", "TGA-PIL", "TARGA-FI", "pyav"],
     ),
     FileExtension(
         name="Tagged Image File",
         extension=".tif",
-        priority=["TIFF", "pillow", "TIFF-PIL", "TIFF-FI", "FEI", "ITK", "GDAL"],
+        priority=[
+            "tifffile",
+            "TIFF",
+            "pillow",
+            "TIFF-PIL",
+            "TIFF-FI",
+            "FEI",
+            "ITK",
+            "GDAL",
+            "pyav",
+            "opencv",
+        ],
+        volume_support=True,
     ),
     FileExtension(
         name="Tagged Image File Format",
         extension=".tiff",
-        priority=["TIFF", "pillow", "TIFF-PIL", "TIFF-FI", "FEI", "ITK", "GDAL"],
+        priority=[
+            "tifffile",
+            "TIFF",
+            "pillow",
+            "TIFF-PIL",
+            "TIFF-FI",
+            "FEI",
+            "ITK",
+            "GDAL",
+            "pyav",
+            "opencv",
+        ],
+        volume_support=True,
+    ),
+    FileExtension(
+        extension=".vda",
+        priority=["pillow"],
+    ),
+    FileExtension(
+        extension=".vst",
+        priority=["pillow"],
     ),
     FileExtension(
         extension=".vtk",
@@ -828,13 +906,14 @@ extension_list = [
         priority=["JPEG-XR-FI"],
     ),
     FileExtension(
+        name="Matroska",
         extension=".webm",
-        priority=["FFMPEG"],
+        priority=["FFMPEG", "pyav"],
     ),
     FileExtension(
         name="Google WebP",
         extension=".webp",
-        priority=["WEBP-FI"],
+        priority=["pillow", "WEBP-FI", "pyav", "opencv"],
     ),
     FileExtension(
         name="Windows Meta File",
@@ -849,7 +928,7 @@ extension_list = [
     FileExtension(
         name="X11 Bitmap",
         extension=".xbm",
-        priority=["pillow", "XBM-PIL", "XBM-FI"],
+        priority=["pillow", "XBM-PIL", "XBM-FI", "pyav"],
     ),
     FileExtension(
         name="X11 Pixel Map",
@@ -861,11 +940,936 @@ extension_list = [
         extension=".XVTHUMB",
         priority=["pillow", "XVTHUMB-PIL"],
     ),
+    FileExtension(
+        extension=".dpx",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".im1",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".im24",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".im8",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".jls",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".ljpg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".pam",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".pcx",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".pgmyuv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".pix",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".ppm",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".rs",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".sun",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".sunras",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".xface",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".xwd",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".y",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".3g2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".3gp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".f4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".ism",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".isma",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".ismv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".m4a",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".m4b",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".mj2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP (3GPP file format)",
+        extension=".psp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".3g2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".3gp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".f4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".ism",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".isma",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".ismv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".m4a",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".m4b",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".mj2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GP2 (3GPP2 file format)",
+        extension=".psp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="3GPP AMR",
+        extension=".amr",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="a64 - video for Commodore 64",
+        extension=".A64",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="a64 - video for Commodore 64",
+        extension=".a64",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Adobe Filmstrip",
+        extension=".flm",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="AMV",
+        extension=".amv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="ASF (Advanced / Active Streaming Format)",
+        extension=".asf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="ASF (Advanced / Active Streaming Format)",
+        extension=".asf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="ASF (Advanced / Active Streaming Format)",
+        extension=".wmv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="ASF (Advanced / Active Streaming Format)",
+        extension=".wmv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="AV1 Annex B",
+        extension=".obu",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="AV1 low overhead OBU",
+        extension=".obu",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="AVI (Audio Video Interleaved)",
+        extension=".avi",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="AVR (Audio Visual Research)",
+        extension=".avr",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Beam Software SIFF",
+        extension=".vb",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="CD Graphics",
+        extension=".cdg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Commodore CDXL video",
+        extension=".cdxl",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Commodore CDXL video",
+        extension=".xl",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="DASH Muxer",
+        extension=".mpd",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Digital Pictures SGA",
+        extension=".sga",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Discworld II BMV",
+        extension=".bmv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="DV (Digital Video)",
+        extension=".dif",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="DV (Digital Video)",
+        extension=".dv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="F4V Adobe Flash Video",
+        extension=".f4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="FLV (Flash Video)",
+        extension=".flv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="GXF (General eXchange Format)",
+        extension=".gxf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="iCE Draw File",
+        extension=".idf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="IFV CCTV DVR",
+        extension=".ifv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="iPod H.264 MP4 (MPEG-4 Part 14)",
+        extension=".m4a",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="iPod H.264 MP4 (MPEG-4 Part 14)",
+        extension=".m4b",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="iPod H.264 MP4 (MPEG-4 Part 14)",
+        extension=".m4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="IVR (Internet Video Recording)",
+        extension=".ivr",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Konami PS2 SVAG",
+        extension=".svag",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="KUX (YouKu)",
+        extension=".kux",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="live RTMP FLV (Flash Video)",
+        extension=".flv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Loki SDL MJPEG",
+        extension=".mjpg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="LVF",
+        extension=".lvf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Matroska / WebM",
+        extension=".mk3d",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Matroska / WebM",
+        extension=".mka",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Matroska / WebM",
+        extension=".mks",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Microsoft XMV",
+        extension=".xmv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MIME multipart JPEG",
+        extension=".mjpg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MobiClip MODS",
+        extension=".mods",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MobiClip MOFLEX",
+        extension=".moflex",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Motion Pixels MVI",
+        extension=".mvi",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".3g2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".3gp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".f4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".ism",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".isma",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".ismv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".m4a",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".m4b",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".mj2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MP4 (MPEG-4 Part 14)",
+        extension=".psp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-2 PS (DVD VOB)",
+        extension=".dvd",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-2 PS (SVCD)",
+        extension=".vob",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-2 PS (VOB)",
+        extension=".vob",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-TS (MPEG-2 Transport Stream)",
+        extension=".m2t",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-TS (MPEG-2 Transport Stream)",
+        extension=".m2ts",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-TS (MPEG-2 Transport Stream)",
+        extension=".mts",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MPEG-TS (MPEG-2 Transport Stream)",
+        extension=".ts",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Musepack",
+        extension=".mpc",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MXF (Material eXchange Format) Operational Pattern Atom",
+        extension=".mxf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MXF (Material eXchange Format)",
+        extension=".mxf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="MxPEG clip",
+        extension=".mxg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="NC camera feed",
+        extension=".v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="NUT",
+        extension=".nut",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Ogg Video",
+        extension=".ogv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Ogg",
+        extension=".ogg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="On2 IVF",
+        extension=".ivf",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="PSP MP4 (MPEG-4 Part 14)",
+        extension=".psp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Psygnosis YOP",
+        extension=".yop",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".3g2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".3gp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".f4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".ism",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".isma",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".ismv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".m4a",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".m4b",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".mj2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="QuickTime / MOV",
+        extension=".psp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw AVS2-P2/IEEE1857.4 video",
+        extension=".avs",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw AVS2-P2/IEEE1857.4 video",
+        extension=".avs2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw AVS3-P2/IEEE1857.10",
+        extension=".avs3",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw Chinese AVS (Audio Video Standard) video",
+        extension=".cavs",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw Dirac",
+        extension=".drc",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw Dirac",
+        extension=".vc2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw DNxHD (SMPTE VC-3)",
+        extension=".dnxhd",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw DNxHD (SMPTE VC-3)",
+        extension=".dnxhr",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw GSM",
+        extension=".gsm",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw H.261",
+        extension=".h261",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw H.263",
+        extension=".h263",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw H.264 video",
+        extension=".264",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw H.264 video",
+        extension=".avc",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw H.264 video",
+        extension=".h264",
+        priority=["pyav", "FFMPEG"],
+    ),
+    FileExtension(
+        name="raw H.264 video",
+        extension=".h26l",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw HEVC video",
+        extension=".265",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw HEVC video",
+        extension=".h265",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw HEVC video",
+        extension=".hevc",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw id RoQ",
+        extension=".roq",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw Ingenient MJPEG",
+        extension=".cgi",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw IPU Video",
+        extension=".ipu",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MJPEG 2000 video",
+        extension=".j2k",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MJPEG video",
+        extension=".mjpeg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MJPEG video",
+        extension=".mjpg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MJPEG video",
+        extension=".mpo",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MPEG-1 video",
+        extension=".m1v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MPEG-1 video",
+        extension=".mpeg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MPEG-1 video",
+        extension=".mpg",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MPEG-2 video",
+        extension=".m2v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw MPEG-4 video",
+        extension=".m4v",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw VC-1 video",
+        extension=".vc1",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw video",
+        extension=".cif",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw video",
+        extension=".qcif",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw video",
+        extension=".rgb",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="raw video",
+        extension=".yuv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="RealMedia",
+        extension=".rm",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="SDR2",
+        extension=".sdr2",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Sega FILM / CPK",
+        extension=".cpk",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="SER (Simple uncompressed video format for astronomical capturing)",
+        extension=".ser",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Simbiosis Interactive IMX",
+        extension=".imx",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Square SVS",
+        extension=".svs",
+        priority=["tifffile", "pyav"],
+    ),
+    FileExtension(
+        name="TiVo TY Stream",
+        extension=".ty",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="TiVo TY Stream",
+        extension=".ty+",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Uncompressed 4:2:2 10-bit",
+        extension=".v210",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Uncompressed 4:2:2 10-bit",
+        extension=".yuv10",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="VC-1 test bitstream",
+        extension=".rcv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Video CCTV DAT",
+        extension=".dat",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Video DAV",
+        extension=".dav",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Vivo",
+        extension=".viv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="WebM Chunk Muxer",
+        extension=".chk",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="WebM",
+        extension=".mk3d",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="WebM",
+        extension=".mka",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="WebM",
+        extension=".mks",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Windows Television (WTV)",
+        extension=".wtv",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="Xilam DERF",
+        extension=".adp",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        name="YUV4MPEG pipe",
+        extension=".y4m",
+        priority=["pyav"],
+    ),
+    FileExtension(
+        extension=".qpi",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="PCO Camera",
+        extension=".pcoraw",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="PCO Camera",
+        extension=".rec",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Perkin Elmer Vectra",
+        extension=".qptiff",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Pyramid Encoded TIFF",
+        extension=".ptiff",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Pyramid Encoded TIFF",
+        extension=".ptif",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Opticks Gel",
+        extension=".gel",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Zoomify Image Format",
+        extension=".zif",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Hamamatsu Slide Scanner",
+        extension=".ndpi",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="Roche Digital Pathology",
+        extension=".bif",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        extension=".tf8",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        extension=".btf",
+        priority=["tifffile"],
+    ),
+    FileExtension(
+        name="High Efficiency Image File Format",
+        extension=".heic",
+        priority=["pillow"],
+    ),
+    FileExtension(
+        name="AV1 Image File Format",
+        extension=".avif",
+        priority=["pillow"],
+    ),
 ]
 extension_list.sort(key=lambda x: x.extension)
 
 
-known_extensions: Dict[str, List[FileExtension]] = dict()
+known_extensions = dict()
 for ext in extension_list:
     if ext.extension not in known_extensions:
         known_extensions[ext.extension] = list()
@@ -874,17 +1878,124 @@ for ext in extension_list:
 extension_list = [ext for ext_list in known_extensions.values() for ext in ext_list]
 
 _video_extension_strings = [
+    ".264",
+    ".265",
+    ".3g2",
+    ".3gp",
+    ".a64",
+    ".A64",
+    ".adp",
+    ".amr",
+    ".amv",
+    ".asf",
+    ".avc",
     ".avi",
+    ".avr",
+    ".avs",
+    ".avs2",
+    ".avs3",
+    ".bmv",
+    ".cavs",
+    ".cdg",
+    ".cdxl",
+    ".cgi",
+    ".chk",
+    ".cif",
+    ".cpk",
+    ".dat",
+    ".dav",
+    ".dif",
+    ".dnxhd",
+    ".dnxhr",
+    ".drc",
+    ".dv",
+    ".dvd",
+    ".f4v",
+    ".flm",
+    ".flv",
+    ".gsm",
+    ".gxf",
+    ".h261",
+    ".h263",
+    ".h264",
+    ".h265",
+    ".h26l",
+    ".hevc",
+    ".idf",
+    ".ifv",
+    ".imx",
+    ".ipu",
+    ".ism",
+    ".isma",
+    ".ismv",
+    ".ivf",
+    ".ivr",
+    ".j2k",
+    ".kux",
+    ".lvf",
+    ".m1v",
+    ".m2t",
+    ".m2ts",
+    ".m2v",
+    ".m4a",
+    ".m4b",
+    ".m4v",
+    ".mj2",
+    ".mjpeg",
+    ".mjpg",
+    ".mk3d",
+    ".mka",
+    ".mks",
     ".mkv",
+    ".mods",
+    ".moflex",
     ".mov",
     ".mp4",
+    ".mpc",
+    ".mpd",
     ".mpeg",
     ".mpg",
+    ".mpo",
+    ".mts",
+    ".mvi",
+    ".mxf",
+    ".mxg",
+    ".nut",
+    ".obu",
+    ".ogg",
+    ".ogv",
+    ".psp",
+    ".qcif",
+    ".rcv",
+    ".rgb",
+    ".rm",
+    ".roq",
+    ".sdr2",
+    ".ser",
+    ".sga",
+    ".svag",
+    ".svs",
+    ".ts",
+    ".ty",
+    ".ty+",
+    ".v",
+    ".v210",
+    ".vb",
+    ".vc1",
+    ".vc2",
+    ".viv",
+    ".vob",
     ".webm",
     ".wmv",
-    ".gif",
+    ".wtv",
+    ".xl",
+    ".xmv",
+    ".y4m",
+    ".yop",
+    ".yuv",
+    ".yuv10",
 ]
-video_extensions: List[FileExtension] = list()
+video_extensions = list()
 for ext_string in _video_extension_strings:
     formats = known_extensions[ext_string]
     video_extensions.append(formats[0])

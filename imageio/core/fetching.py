@@ -2,8 +2,7 @@
 # Based on code from the vispy project
 # Distributed under the (new) BSD License. See LICENSE.txt for more info.
 
-"""Data downloading and reading functions
-"""
+"""Data downloading and reading functions"""
 
 from math import log
 import os
@@ -113,7 +112,7 @@ def get_remote_file(fname, directory=None, force_download=False, auto=True):
     if not op.isdir(op.dirname(filename)):
         os.makedirs(op.abspath(op.dirname(filename)))
     # let's go get the file
-    if os.getenv("CONTINUOUS_INTEGRATION", False):  # pragma: no cover
+    if os.getenv("CI"):  # pragma: no cover
         # On CI, we retry a few times ...
         for i in range(2):
             try:
@@ -239,7 +238,7 @@ def _sizeof_fmt(num):
     """Human friendly file size"""
     if num > 1:
         exponent = min(int(log(num, 1024)), len(units) - 1)
-        quotient = float(num) / 1024 ** exponent
+        quotient = float(num) / 1024**exponent
         unit = units[exponent]
         num_decimals = decimals[exponent]
         format_string = "{0:.%sf} {1}" % num_decimals
